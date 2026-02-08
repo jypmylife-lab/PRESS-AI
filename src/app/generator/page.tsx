@@ -11,27 +11,27 @@ import { Check, Copy, RefreshCcw, ArrowRight, ArrowLeft } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // Mock Data
-const MOCK_KEYWORDS = ["AI Technology", "Innovation", "Press Release", "Startup", "Global Market", "Series A", "Product Launch", "Efficiency"];
+const MOCK_KEYWORDS = ["AI 기술", "혁신", "보도자료", "스타트업", "글로벌 시장", "시리즈 A", "신제품 출시", "업무 효율화"];
 
 const TEMPLATE = (name: string, desc: string, keywords: string[]) => `
-FOR IMMEDIATE RELEASE
+[보도자료]
 
-${name.toUpperCase()} REVOLUTIONIZES THE INDUSTRY WITH NEW LAUNCH
+${name.toUpperCase()}, 업계를 선도할 혁신적인 솔루션 출시
 
-[CITY, Date] — ${name}, a leading innovator in the field, today announced the launch of its groundbreaking new solution designed to transform how businesses approach ${keywords[0] || "their operations"}.
+[서울, 2025년 5월 20일] — 업계의 선도적 기업인 ${name}은(는) 오늘 기업들이 ${keywords[0] || "운영 방식"}을 혁신할 수 있도록 돕는 획기적인 새로운 솔루션을 출시한다고 발표했습니다.
 
-"${desc}" says the CEO of ${name}. "This launch marks a significant milestone in our mission to deliver ${keywords[1] || "excellence"}."
+${name}의 대표이사는 "${desc}"라고 말하며, "이번 출시는 우리가 고객들에게 ${keywords[1] || "최고의 가치"}를 제공하고자 하는 미션에 있어 중요한 이정표가 될 것입니다."라고 강조했습니다.
 
-Key Features:
-- Feature 1: Cutting-edge integration.
-- Feature 2: Enhanced performance driven by ${keywords[2] || "AI"}.
+주요 특징:
+- 핵심 기능 1: 최첨단 기술 통합을 통한 ${keywords[2] || "생산성"} 향상.
+- 핵심 기능 2: ${keywords[3] || "AI 기반"}의 데이터 분석 및 인사이트 제공.
 
-About ${name}:
-${name} is dedicated to providing top-tier solutions for modern challenges.
+${name} 소개:
+${name}은(는) 현대 비즈니스가 직면한 과제를 해결하기 위해 최상의 솔루션을 제공하는 데 전념하고 있습니다.
 
-Media Contact:
-Name: Media Team
-Email: press@${name.toLowerCase().replace(/\s/g, "")}.com
+언론 문의:
+담당자: 홍보팀
+이메일: press@${name.toLowerCase().replace(/\s/g, "")}.com
 `;
 
 export default function GeneratorPage() {
@@ -78,8 +78,8 @@ export default function GeneratorPage() {
     return (
         <div className="max-w-3xl mx-auto space-y-8">
             <div className="text-center space-y-2">
-                <h2 className="text-3xl font-bold tracking-tight">AI Press Release Generator</h2>
-                <p className="text-muted-foreground">Create professional press releases in minutes.</p>
+                <h2 className="text-3xl font-bold tracking-tight">AI 보도자료 생성기</h2>
+                <p className="text-muted-foreground">전문적인 보도자료를 몇 분 만에 작성하세요.</p>
             </div>
 
             {/* Stepper */}
@@ -104,20 +104,20 @@ export default function GeneratorPage() {
                     >
                         <Card>
                             <CardHeader>
-                                <CardTitle>Basics</CardTitle>
-                                <CardDescription>Tell us about what you want to announce.</CardDescription>
+                                <CardTitle>기본 정보</CardTitle>
+                                <CardDescription>보도자료의 주제와 핵심 내용을 입력해주세요.</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="space-y-2">
-                                    <Label>Product / Company Name</Label>
+                                    <Label>제품/서비스 또는 회사명</Label>
                                     <Input
-                                        placeholder="e.g. PressCraft AI"
+                                        placeholder="예: PressCraft AI"
                                         value={formData.productName}
                                         onChange={e => setFormData({ ...formData, productName: e.target.value })}
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Website URL (Optional)</Label>
+                                    <Label>웹사이트 URL (선택)</Label>
                                     <Input
                                         placeholder="https://..."
                                         value={formData.url}
@@ -125,9 +125,9 @@ export default function GeneratorPage() {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Key Message / Description</Label>
+                                    <Label>핵심 메시지 / 상세 설명</Label>
                                     <Textarea
-                                        placeholder="Describe the main announcement..."
+                                        placeholder="보도자료에 들어갈 주요 내용을 서술해주세요..."
                                         className="h-32"
                                         value={formData.description}
                                         onChange={e => setFormData({ ...formData, description: e.target.value })}
@@ -136,7 +136,7 @@ export default function GeneratorPage() {
                             </CardContent>
                             <CardFooter className="flex justify-end">
                                 <Button onClick={handleNext} disabled={!formData.productName || !formData.description || isGenerating}>
-                                    {isGenerating ? "Analyzing..." : "Next: Select Keywords"}
+                                    {isGenerating ? "분석 중..." : "다음: 키워드 선택"}
                                     {!isGenerating && <ArrowRight className="ml-2 h-4 w-4" />}
                                 </Button>
                             </CardFooter>
@@ -153,8 +153,8 @@ export default function GeneratorPage() {
                     >
                         <Card>
                             <CardHeader>
-                                <CardTitle>Keywords</CardTitle>
-                                <CardDescription>Select up to 5 keywords related to your announcement.</CardDescription>
+                                <CardTitle>키워드 선택</CardTitle>
+                                <CardDescription>보도자료에 강조할 키워드를 최대 5개 선택하세요.</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <div className="flex flex-wrap gap-2">
@@ -169,12 +169,12 @@ export default function GeneratorPage() {
                                         </Badge>
                                     ))}
                                 </div>
-                                <p className="text-xs text-muted-foreground mt-4">Selected: {selectedKeywords.length}/5</p>
+                                <p className="text-xs text-muted-foreground mt-4">선택됨: {selectedKeywords.length}/5</p>
                             </CardContent>
                             <CardFooter className="flex justify-between">
-                                <Button variant="ghost" onClick={() => setStep(1)}>Back</Button>
+                                <Button variant="ghost" onClick={() => setStep(1)}>이전</Button>
                                 <Button onClick={handleNext} disabled={selectedKeywords.length === 0 || isGenerating}>
-                                    {isGenerating ? "Generating Draft..." : "Generate Press Release"}
+                                    {isGenerating ? "보도자료 생성 중..." : "보도자료 생성하기"}
                                     {!isGenerating && <ArrowRight className="ml-2 h-4 w-4" />}
                                 </Button>
                             </CardFooter>
@@ -191,8 +191,8 @@ export default function GeneratorPage() {
                     >
                         <Card>
                             <CardHeader>
-                                <CardTitle>Your Press Release</CardTitle>
-                                <CardDescription>Review and copy your draft.</CardDescription>
+                                <CardTitle>생성된 보도자료</CardTitle>
+                                <CardDescription>초안을 확인하고 복사하거나 저장하세요.</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <Textarea
@@ -202,12 +202,12 @@ export default function GeneratorPage() {
                                 />
                             </CardContent>
                             <CardFooter className="flex justify-between">
-                                <Button variant="outline" onClick={() => setStep(1)}><RefreshCcw className="mr-2 h-4 w-4" /> Start Over</Button>
+                                <Button variant="outline" onClick={() => setStep(1)}><RefreshCcw className="mr-2 h-4 w-4" /> 다시 시작</Button>
                                 <div className="flex gap-2">
                                     <Button variant="secondary" onClick={() => navigator.clipboard.writeText(generatedContent)}>
-                                        <Copy className="mr-2 h-4 w-4" /> Copy to Clipboard
+                                        <Copy className="mr-2 h-4 w-4" /> 복사하기
                                     </Button>
-                                    <Button>Save to Drafts</Button>
+                                    <Button>임시 저장</Button>
                                 </div>
                             </CardFooter>
                         </Card>

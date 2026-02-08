@@ -79,7 +79,7 @@ export default function DashboardPage() {
     const handleAddFeed = () => {
         if (!newFeedUrl) return;
         // Simple ID gen
-        const newFeed: FeedSource = { id: Date.now().toString(), name: "New Feed", url: newFeedUrl };
+        const newFeed: FeedSource = { id: Date.now().toString(), name: "새 피드", url: newFeedUrl };
         setFeeds([...feeds, newFeed]);
         setNewFeedUrl("");
     };
@@ -88,13 +88,13 @@ export default function DashboardPage() {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Media Monitoring Dashboard</h2>
-                    <p className="text-muted-foreground">Track real-time news and coverage from your sources.</p>
+                    <h2 className="text-3xl font-bold tracking-tight">미디어 모니터링 대시보드</h2>
+                    <p className="text-muted-foreground">관심 매체의 실시간 뉴스를 모니터링하세요.</p>
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={fetchNews} disabled={loading}>
                         <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                        Refresh
+                        새로고침
                     </Button>
                 </div>
             </div>
@@ -102,7 +102,7 @@ export default function DashboardPage() {
             {/* Stats and Feed Management */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
                 <ColScpan4 className="border p-4 rounded-xl bg-card text-card-foreground shadow-sm col-span-4">
-                    <h3 className="font-semibold mb-4">Latest News</h3>
+                    <h3 className="font-semibold mb-4">최신 뉴스</h3>
                     {loading ? (
                         <div className="space-y-4">
                             {[1, 2, 3].map(i => <div key={i} className="h-24 bg-muted/50 rounded-lg animate-pulse" />)}
@@ -120,7 +120,7 @@ export default function DashboardPage() {
                                             <h4 className="font-medium hover:underline cursor-pointer">
                                                 <a href={item.link} target="_blank" rel="noopener noreferrer">{item.title}</a>
                                             </h4>
-                                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{item.title} - Click to read more.</p>
+                                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{item.title} - 클릭하여 더 보기.</p>
                                         </div>
                                         {item.thumbnail && (
                                             <img src={item.thumbnail} alt="" className="w-24 h-24 object-cover rounded-md hidden sm:block" />
@@ -136,13 +136,13 @@ export default function DashboardPage() {
                     {/* Feed Manager */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Sources</CardTitle>
-                            <CardDescription>Manage your RSS feeds</CardDescription>
+                            <CardTitle>구독 소스</CardTitle>
+                            <CardDescription>RSS 피드 관리</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="flex gap-2 mb-4">
                                 <Input
-                                    placeholder="Enter RSS URL"
+                                    placeholder="RSS 주소 입력"
                                     value={newFeedUrl}
                                     onChange={(e) => setNewFeedUrl(e.target.value)}
                                 />
@@ -171,15 +171,15 @@ export default function DashboardPage() {
                     {/* Quick Stats */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Overview</CardTitle>
+                            <CardTitle>현황</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="flex justify-between items-center">
-                                <span className="text-sm text-muted-foreground">Total Articles</span>
+                                <span className="text-sm text-muted-foreground">수집된 기사</span>
                                 <span className="font-bold">{news.length}</span>
                             </div>
                             <div className="flex justify-between items-center">
-                                <span className="text-sm text-muted-foreground">Active Feeds</span>
+                                <span className="text-sm text-muted-foreground">활성 채널</span>
                                 <span className="font-bold">{feeds.length}</span>
                             </div>
                         </CardContent>

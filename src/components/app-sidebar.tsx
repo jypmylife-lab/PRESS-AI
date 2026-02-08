@@ -19,22 +19,22 @@ import {
 // Menu items.
 const items = [
   {
-    title: "Dashboard",
+    title: "대시보드", // Dashboard
     url: "/dashboard",
     icon: Newspaper,
   },
   {
-    title: "PR Generator",
+    title: "보도자료 생성", // PR Generator
     url: "/generator",
     icon: PenTool,
   },
   {
-    title: "Calendar",
+    title: "배포 캘린더", // Calendar
     url: "/calendar",
     icon: Calendar,
   },
   {
-    title: "Reports",
+    title: "성과 리포트", // Reports
     url: "/reports",
     icon: BarChart3,
   },
@@ -50,7 +50,7 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Application</SidebarGroupLabel>
+          <SidebarGroupLabel>애플리케이션</SidebarGroupLabel> {/* Application */}
           <SidebarGroupContent>
             <SidebarMenu>
               {items.map((item) => (

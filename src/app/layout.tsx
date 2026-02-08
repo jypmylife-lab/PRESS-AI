@@ -24,7 +24,7 @@ export default function RootLayout({
           <main className="w-full">
             <div className="p-4 border-b flex items-center gap-2">
               <SidebarTrigger />
-              <span className="font-semibold">PressCraft AI Workspace</span>
+              <span className="font-semibold">PressCraft AI 워크스페이스</span>
             </div>
             <div className="p-8">
               {children}
