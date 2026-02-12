@@ -19,7 +19,7 @@ import {
 // Menu items.
 const items = [
   {
-    title: "대시보드", // Dashboard
+    title: "뉴스 클리핑", // News Clipping
     url: "/dashboard",
     icon: Newspaper,
   },
