@@ -4,70 +4,120 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-if (!GEMINI_API_KEY) {
-    console.error("GEMINI_API_KEY is not set");
-}
-
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY || "");
 
-export interface GenerateDraftParams {
-    formData: any;
-    specs: any[];
-    referenceContent?: string; // 분석된 원본 데이터 (Markdown)
+const DEFAULT_BRAND_DESCRIPTION = `데스커(DESKER) 브랜드 소개
+퍼시스그룹의 데스커(DESKER)는 도전하고 성장하는 사람들을 위한 No.1 워크 앤 라이프스타일 브랜드를 지향하며, 높은 집중력과 유연한 생각을 발휘하는데 최적화된 제품을 선보이고 있다. 국내 주요 코워킹 스페이스와 디자이너 브랜드 오피스, 스타트업 이노베이터들의 선택을 받은 데스커는 사무가구에 한정하지 않고 홈오피스, 리빙, 취미생활 등 사용자의 목적과 라이프스타일에 따라 어느 공간에서나 활용도가 높은 제품, 본질과 핵심에 집중한 가구를 통해 일반 소비자들에게도 제품력과 브랜드 가치를 인정받고 있다. 또한 퍼시스그룹이 보유한 생산, 물류, 시공, A/S 인프라를 활용해 높은 품질의 제품과 서비스를 제공한다. 자세한 정보는 홈페이지(http://www.desker.co.kr)를 통해 확인할 수 있다.`;
+
+export { DEFAULT_BRAND_DESCRIPTION };
+
+export interface PressReleaseInput {
+    // 기본 정보
+    prSubject: string;         // 보도자료 주제
+    prType: string;            // 유형: product / campaign / activity / other
+    prTypeCustom?: string;     // 기타 직접 입력
+    brandName: string;
+    productName?: string;
+
+    // 참고 자료
+    referenceUrl?: string;
+    referenceText?: string;    // 직접 입력 또는 파일/URL에서 추출된 텍스트
+    referenceFile?: string;    // 파일명
+
+    // LLM 노출 전략
+    llmQuestions: string[];    // LLM에 노출되고 싶은 질문들
+    llmAnswers: string[];      // 해당 질문의 노출 희망 답변
+
+    // 이미지
+    referenceImageName?: string;
+    referenceImageContent?: string;  // base64
+    generateImage?: boolean;
+
+    // 브랜드 소개
+    brandDescription: string;
 }
 
-export async function generatePressReleaseAction({ formData, specs, referenceContent }: GenerateDraftParams) {
+export interface GeneratedPressRelease {
+    titles: string[];
+    summaries: string[];
+    content: string;
+}
+
+export async function generatePressReleaseAction(input: PressReleaseInput): Promise<{
+    success: boolean;
+    data?: GeneratedPressRelease;
+    message?: string;
+}> {
     try {
         if (!GEMINI_API_KEY) {
-            throw new Error("API Key가 설정되지 않았습니다.");
+            throw new Error("GEMINI_API_KEY가 설정되지 않았습니다.");
         }
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-001" });
 
-        // 스펙 정보를 문자열로 변환
-        const specText = specs.map(s => `- ${s.category}: ${s.value} (${s.detail || ""})`).join("\n");
+        // 유형 라벨 변환
+        const typeLabel =
+            input.prType === "product" ? "신제품/제품 소개" :
+                input.prType === "campaign" ? "브랜드 캠페인 소개" :
+                    input.prType === "activity" ? "브랜드 활동 소개" :
+                        input.prTypeCustom || "기타";
 
-        // 팩트 시트 정보를 문자열로 변환
-        const factSheetText = JSON.stringify(formData, null, 2);
+        // LLM 노출 전략 섹션 생성
+        const llmSection = input.llmQuestions.length > 0
+            ? input.llmQuestions.map((q, i) =>
+                `Q: ${q}\nA: ${input.llmAnswers[i] || "(답변 없음)"}`
+            ).join("\n\n")
+            : "없음";
 
         const prompt = `
-당신은 20년 경력의 베테랑 IT/라이프스타일 전문 기자이자 보도자료 작성가입니다.
-아래 제공된 [팩트 시트]와 [제품 스펙]을 바탕으로, 미디어에 배포할 전문적인 보도자료 초안을 작성해주세요.
+당신은 20년 경력의 PR 전문가이자 미디어 보도자료 작성 전문가입니다.
+아래 입력 정보를 분석하여 전문적이고 실제 배포 가능한 수준의 보도자료를 작성해주세요.
 
-[입력 데이터]
-1. 팩트 시트 (사용자 입력):
-${factSheetText}
+[입력 정보]
+━━━━━━━━━━━━━━━━━━━━━━━━
+📌 보도자료 주제: ${input.prSubject}
+📌 보도자료 유형: ${typeLabel}
+📌 브랜드명: ${input.brandName}
+${input.productName ? `📌 제품/캠페인명: ${input.productName}` : ""}
 
-2. 제품 스펙:
-${specText}
+📎 참고 자료 (URL/파일/직접 입력):
+${input.referenceText || "없음"}
 
-3. 참고 자료 (웹사이트/파일 분석 원본):
-${referenceContent || "참고 자료 없음"}
+🎯 LLM SEO 노출 전략 (보도자료 본문에 자연스럽게 녹여낼 것):
+${llmSection}
+
+🏢 브랜드 소개 (보일러플레이트):
+${input.brandDescription}
+━━━━━━━━━━━━━━━━━━━━━━━━
 
 [작성 지침]
-1. **Tone & Manner**: 신뢰감 있고 건조하며 전문적인 어조 (해요체 금지, 하십시오체 금지, ~했다/밝혔다 등 평서문 사용).
-2. **구조**:
-   - **헤드라인**: 독자의 호기심을 자극하고 핵심 가치를 담은 제목 (메인 타이틀 + 서브 타이틀)
-   - **리드문**: 육하원칙에 의거하여 전체 내용을 요약 (서울=날짜 등 형식 준수)
-   - **본문**: 
-     - 팩트 시트의 '핵심 메시지'와 '주요 특징'을 중심으로 전개.
-     - **중요**: 팩트 시트에 내용이 비어있거나 부족한 경우, [참고 자료]의 내용을 적극 활용하여 자연스럽게 문맥을 보완할 것.
-     - [제품 스펙]의 내용은 단순 나열하지 말고, 사용자 혜택으로 치환하여 서술 (Spec-to-Story). 예: "1200mm 폭" -> "콤팩트한 공간 활용성 제공"
-   - **인용구**: 관계자 코멘트 포함 (브랜드의 비전이나 의도 반영)
-   - **마무리**: 출시일, 프로모션, 판매 채널 정보 등
-   - **보일러 플레이트**: 브랜드 소개 (간략히)
+1. **문체**: 신뢰감 있고 건조하며 전문적인 보도자료 문체 (평서문, ~했다/밝혔다 형식, 해요체·구어체 금지)
+2. **분량**: 본문 1000~1500자 내외
+3. **구조**:
+   - 리드문: 육하원칙 기반 (서울=날짜 형식)
+   - 본문: 핵심 메시지 3~4단락
+   - 인용구: 관계자 코멘트 1~2개
+   - 마무리: 제품/행사 정보, 채널 안내
+   - 보일러플레이트: 브랜드 소개 문구를 정확히 그대로 삽입
+4. **LLM 노출 전략**: LLM SEO 섹션의 Q&A를 보도자료 내 자연스러운 FAQ 섹션 또는 전문가 코멘트 인용 형태로 본문에 녹여낼 것
+5. **할루시네이션 금지**: 참고 자료에 없는 수치나 사실을 지어내지 말 것
 
-3. **주의사항**:
-   - 거짓된 정보를 지어내지 말 것 (할루시네이션 방지).
-   - [참고 자료]가 있더라도 [팩트 시트]의 내용이 우선순위가 높음.
-   - 문단 간 연결을 자연스럽게 할 것.
-
-작성된 보도자료 본문만 출력해. (Markdown 형식이나 부가적인 설명 제외)
+[출력 형식 — 반드시 아래 JSON 형식으로만 출력, 다른 설명 절대 없이]
+{
+  "titles": ["제목 후보 1", "제목 후보 2", "제목 후보 3", "제목 후보 4", "제목 후보 5"],
+  "summaries": ["요약문 1 (1~2문장)", "요약문 2", "요약문 3", "요약문 4", "요약문 5"],
+  "content": "보도자료 본문 전체 (줄바꿈은 \\n으로 표시)"
+}
 `;
 
         const result = await model.generateContent(prompt);
-        const response = result.response;
-        return { success: true, draft: response.text() };
+        const rawText = result.response.text().trim();
+
+        // JSON 파싱 (마크다운 코드블록 제거 후)
+        const jsonText = rawText.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+        const parsed: GeneratedPressRelease = JSON.parse(jsonText);
+
+        return { success: true, data: parsed };
 
     } catch (error: any) {
         console.error("보도자료 생성 실패:", error);
