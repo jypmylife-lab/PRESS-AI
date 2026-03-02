@@ -1,4 +1,5 @@
-import { FactSheetData, SpecItem } from "./page";
+import { FactSheetData } from "./page";
+import { SpecItem } from "@/components/SpecInput";
 
 // --- 1. Spec-to-Story Engine (Rule-based) ---
 // Maps physical specs to lifestyle benefits
