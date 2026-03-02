@@ -11,8 +11,15 @@ import mammoth from "mammoth";
 export async function extractTextFromPDF(file: File): Promise<string> {
     const pdfjsLib = await import("pdfjs-dist");
 
-    // Worker 설정 — Next.js 환경 호환
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+    // Worker 설정 — Next.js 환경 호환 (unpkg의 js 파일로 고정. 버전 호환성 위해 3.x 이하 또는 해당 버전 js 명시적 사용)
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+
+    if (String(pdfjsLib.version).startsWith('5')) {
+        // v5.x 부터는 빌드 시스템 차이로 다른 방법을 쓰거나 .mjs가 필수이므로
+        // 아래와 같이 legacy 방식으로 폴백
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/legacy/build/pdf.worker.min.mjs`;
+    }
+
 
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;

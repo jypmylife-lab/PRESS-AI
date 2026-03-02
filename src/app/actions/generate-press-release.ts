@@ -1,39 +1,25 @@
 "use server";
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Groq from "groq-sdk";
+import { DEFAULT_BRAND_DESCRIPTION } from "../generator/constants";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY || "");
-
-const DEFAULT_BRAND_DESCRIPTION = `데스커(DESKER) 브랜드 소개
-퍼시스그룹의 데스커(DESKER)는 도전하고 성장하는 사람들을 위한 No.1 워크 앤 라이프스타일 브랜드를 지향하며, 높은 집중력과 유연한 생각을 발휘하는데 최적화된 제품을 선보이고 있다. 국내 주요 코워킹 스페이스와 디자이너 브랜드 오피스, 스타트업 이노베이터들의 선택을 받은 데스커는 사무가구에 한정하지 않고 홈오피스, 리빙, 취미생활 등 사용자의 목적과 라이프스타일에 따라 어느 공간에서나 활용도가 높은 제품, 본질과 핵심에 집중한 가구를 통해 일반 소비자들에게도 제품력과 브랜드 가치를 인정받고 있다. 또한 퍼시스그룹이 보유한 생산, 물류, 시공, A/S 인프라를 활용해 높은 품질의 제품과 서비스를 제공한다. 자세한 정보는 홈페이지(http://www.desker.co.kr)를 통해 확인할 수 있다.`;
-
-export { DEFAULT_BRAND_DESCRIPTION };
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const MODEL = "llama-3.3-70b-versatile"; // 무료, GPT-4급 품질
 
 export interface PressReleaseInput {
-    // 기본 정보
-    prSubject: string;         // 보도자료 주제
-    prType: string;            // 유형: product / campaign / activity / other
-    prTypeCustom?: string;     // 기타 직접 입력
+    prSubject: string;
+    prType: string;
+    prTypeCustom?: string;
     brandName: string;
     productName?: string;
-
-    // 참고 자료
     referenceUrl?: string;
-    referenceText?: string;    // 직접 입력 또는 파일/URL에서 추출된 텍스트
-    referenceFile?: string;    // 파일명
-
-    // LLM 노출 전략
-    llmQuestions: string[];    // LLM에 노출되고 싶은 질문들
-    llmAnswers: string[];      // 해당 질문의 노출 희망 답변
-
-    // 이미지
+    referenceText?: string;
+    referenceFile?: string;
+    llmQuestions: string[];
+    llmAnswers: string[];
     referenceImageName?: string;
-    referenceImageContent?: string;  // base64
+    referenceImageContent?: string;
     generateImage?: boolean;
-
-    // 브랜드 소개
     brandDescription: string;
 }
 
@@ -48,79 +34,93 @@ export async function generatePressReleaseAction(input: PressReleaseInput): Prom
     data?: GeneratedPressRelease;
     message?: string;
 }> {
-    try {
-        if (!GEMINI_API_KEY) {
-            throw new Error("GEMINI_API_KEY가 설정되지 않았습니다.");
-        }
+    if (!process.env.GROQ_API_KEY) {
+        return { success: false, message: "GROQ_API_KEY가 설정되지 않았습니다." };
+    }
 
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-001" });
+    const typeLabel =
+        input.prType === "product" ? "신제품/제품 소개" :
+            input.prType === "campaign" ? "브랜드 캠페인 소개" :
+                input.prType === "activity" ? "브랜드 활동 소개" :
+                    input.prTypeCustom || "기타";
 
-        // 유형 라벨 변환
-        const typeLabel =
-            input.prType === "product" ? "신제품/제품 소개" :
-                input.prType === "campaign" ? "브랜드 캠페인 소개" :
-                    input.prType === "activity" ? "브랜드 활동 소개" :
-                        input.prTypeCustom || "기타";
+    const llmSection = input.llmQuestions.filter(Boolean).length > 0
+        ? input.llmQuestions.filter(Boolean)
+            .map((q, i) => `Q: ${q}\nA: ${input.llmAnswers[i] || "(답변 없음)"}`)
+            .join("\n\n")
+        : "없음";
 
-        // LLM 노출 전략 섹션 생성
-        const llmSection = input.llmQuestions.length > 0
-            ? input.llmQuestions.map((q, i) =>
-                `Q: ${q}\nA: ${input.llmAnswers[i] || "(답변 없음)"}`
-            ).join("\n\n")
-            : "없음";
+    const systemPrompt = `당신은 10년차 PR 전문가이자 산업 전문 기자입니다.
+광고성 표현을 배제하고, 언론사에 배포 가능한 기사 문법으로 보도자료를 작성하세요.
+반드시 아래 JSON 형식으로만 응답하세요. 다른 텍스트는 절대 포함하지 마세요.
+{"titles":["제목1","제목2","제목3","제목4","제목5"],"summaries":["요약1","요약2","요약3","요약4","요약5"],"content":"본문 전체(줄바꿈은 \\n)"}`;
 
-        const prompt = `
-당신은 20년 경력의 PR 전문가이자 미디어 보도자료 작성 전문가입니다.
-아래 입력 정보를 분석하여 전문적이고 실제 배포 가능한 수준의 보도자료를 작성해주세요.
+    const userPrompt = `아래 정보로 전문 보도자료를 작성해주세요.
 
-[입력 정보]
-━━━━━━━━━━━━━━━━━━━━━━━━
-📌 보도자료 주제: ${input.prSubject}
-📌 보도자료 유형: ${typeLabel}
-📌 브랜드명: ${input.brandName}
-${input.productName ? `📌 제품/캠페인명: ${input.productName}` : ""}
+[보도자료 주제] ${input.prSubject}
+[보도자료 유형] ${typeLabel}
+[브랜드명] ${input.brandName}
+${input.productName ? `[제품/캠페인명] ${input.productName}` : ""}
 
-📎 참고 자료 (URL/파일/직접 입력):
+[참고 자료]
 ${input.referenceText || "없음"}
 
-🎯 LLM SEO 노출 전략 (보도자료 본문에 자연스럽게 녹여낼 것):
+[LLM SEO 노출 전략 (참고용 검색 질문 및 답변)]
+다음 질문이 검색될 경우 기사 일부가 답변으로 활용될 수 있도록 문장을 구성하세요.
 ${llmSection}
 
-🏢 브랜드 소개 (보일러플레이트):
+[브랜드 소개]
 ${input.brandDescription}
-━━━━━━━━━━━━━━━━━━━━━━━━
 
-[작성 지침]
-1. **문체**: 신뢰감 있고 건조하며 전문적인 보도자료 문체 (평서문, ~했다/밝혔다 형식, 해요체·구어체 금지)
-2. **분량**: 본문 1000~1500자 내외
-3. **구조**:
-   - 리드문: 육하원칙 기반 (서울=날짜 형식)
-   - 본문: 핵심 메시지 3~4단락
-   - 인용구: 관계자 코멘트 1~2개
-   - 마무리: 제품/행사 정보, 채널 안내
-   - 보일러플레이트: 브랜드 소개 문구를 정확히 그대로 삽입
-4. **LLM 노출 전략**: LLM SEO 섹션의 Q&A를 보도자료 내 자연스러운 FAQ 섹션 또는 전문가 코멘트 인용 형태로 본문에 녹여낼 것
-5. **할루시네이션 금지**: 참고 자료에 없는 수치나 사실을 지어내지 말 것
+[작성 구성 - 반드시 다음 순서를 따르세요]
+1. 뉴스형 헤드라인
+2. 리드문 (2~3문장)
+3. 산업/시장 배경과 출시 맥락 (단순 제품 설명이 아닌 산업 트렌드 관점에서 서술)
+4. 차별화된 핵심 가치 (구체 수치 포함)
+5. 타겟 고객 및 활용 시나리오
+6. 브랜드 관계자 인용문 (3~4문장)
+7. LLM 검색 질문을 자연스럽게 설명 문장 안에 포함 (위 SEO 질문에 대한 대답이 기사 내용으로 읽히도록 구성)
+8. 마무리 및 향후 계획
+9. 브랜드 소개 별도 구분 (기사 하단에 제공된 브랜드 소개 그대로 삽입)
 
-[출력 형식 — 반드시 아래 JSON 형식으로만 출력, 다른 설명 절대 없이]
-{
-  "titles": ["제목 후보 1", "제목 후보 2", "제목 후보 3", "제목 후보 4", "제목 후보 5"],
-  "summaries": ["요약문 1 (1~2문장)", "요약문 2", "요약문 3", "요약문 4", "요약문 5"],
-  "content": "보도자료 본문 전체 (줄바꿈은 \\n으로 표시)"
-}
-`;
+[작성 원칙 - 다음 사항을 100% 엄수할 것]
+- 분량: 1200~1500자
+- [필수] 간결하고 자연스러운 한국어 기사체(평서문)로 작성하되, 문단 내에서 문장 어미와 구조를 다양하게 사용하여 기계적인 느낌을 완전히 없앨 것
+- [금지] 어색한 번역투, 영문 직역 투, 지나치게 딱딱한 한자어 사용을 절대 금지함 (예: '~에 있어서', '~함에 따라', '제고하다', '수반하다' 등 배제)
+- [금지] 동일한 단어, 동일한 의미의 문장, 유사한 문장 구조가 한 기사 내에서 2회 이상 반복되는 것을 엄격히 금지함
+- [필수] 각 문단은 이전 문단과 겹치지 않는 완전히 새로운 정보를 담아야 함
+- [금지] '최첨단', '완벽한', '혁신적인', '다양한 경험' 등 진부하고 추상적인 미사여구를 절대 금지하며 오직 구체적 팩트와 수치로 대체할 것
+- 단순 기능 나열 금지: 제품 기능 설명만으로 기사를 구성하지 말고, 해당 기능이 시장과 소비자에게 주는 효용과 산업적 배경을 연결하여 서술할 것
+- "~할 수 있다", "~가능하다", "~할 예정이다" 어미 반복 금지
+- FAQ 형식 (Q&A 질의응답 형태) 사용 절대 금지
+- 경제지 산업부 전문 기사 톤 유지
+- 경쟁 제품 대비 당사 제품만의 독보적 차별점 1문장 필수 포함
+- 할루시네이션(임의 사실 생성) 절대 금지`;
 
-        const result = await model.generateContent(prompt);
-        const rawText = result.response.text().trim();
+    try {
+        console.log(`[generatePR] Groq ${MODEL} 호출`);
+        const response = await groq.chat.completions.create({
+            model: MODEL,
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt },
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.7,
+            max_tokens: 4096,
+        });
 
-        // JSON 파싱 (마크다운 코드블록 제거 후)
-        const jsonText = rawText.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
-        const parsed: GeneratedPressRelease = JSON.parse(jsonText);
-
+        const rawText = response.choices[0].message.content || "";
+        const parsed: GeneratedPressRelease = JSON.parse(rawText);
+        console.log(`[generatePR] ✅ 성공`);
         return { success: true, data: parsed };
 
     } catch (error: any) {
-        console.error("보도자료 생성 실패:", error);
-        return { success: false, message: error.message || "생성 중 오류 발생" };
+        console.error("[generatePR] ❌ 실패:", error.message);
+        const msg = error.message || "";
+        const userMsg = msg.includes("429")
+            ? "요청 한도 초과. 잠시 후 다시 시도해주세요."
+            : `생성 실패: ${msg.slice(0, 100)}`;
+        return { success: false, message: userMsg };
     }
 }

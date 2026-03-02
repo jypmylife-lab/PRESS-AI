@@ -19,10 +19,10 @@ import { ko } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import {
     generatePressReleaseAction,
-    DEFAULT_BRAND_DESCRIPTION,
     type PressReleaseInput,
     type GeneratedPressRelease
 } from "../actions/generate-press-release";
+import { DEFAULT_BRAND_DESCRIPTION } from "./constants";
 import localforage from "localforage";
 
 // ————————————————————

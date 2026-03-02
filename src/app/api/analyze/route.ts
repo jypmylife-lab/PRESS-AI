@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApifyClient } from "apify-client";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Groq from "groq-sdk";
 
-// Initialize Apify Client
 const APIFY_TOKEN = process.env.APIFY_API_TOKEN;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 export async function POST(req: NextRequest) {
     try {
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
 
         console.log(`Extracted text length: ${rawText.length}`);
         console.log(`Meta Title: ${metaTitle}`);
-        console.log(`GEMINI_API_KEY present: ${!!GEMINI_API_KEY}`);
+        console.log(`GROQ_API_KEY present: ${!!GROQ_API_KEY}`);
 
         if (!rawText && !metaTitle) {
             console.error("Content extraction failed: No text or title found.");
@@ -137,50 +137,37 @@ export async function POST(req: NextRequest) {
             promotion: "내용 입력 (비워두면 생략)"
         };
 
-        if (GEMINI_API_KEY && rawText.length > 100) {
+        if (GROQ_API_KEY && rawText.length > 100) {
             try {
-                console.log("Starting Gemini processing...");
-                const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", generationConfig: { responseMimeType: "application/json" } });
+                console.log("Starting Groq processing...");
+                const groq = new Groq({ apiKey: GROQ_API_KEY });
 
-                const prompt = `
-                Analyze the following product page content and extract the structured data in JSON format.
-                If specific information is missing, use "정보 없음" or empty array.
-                
-                Target Fields:
-                - brand: Brand name (e.g. Desker)
-                - productName: Specific product name
-                - oneLineDef: A catchy one-line slogan or definition related to the product theme.
-                - context: Target audience or usage context (e.g. Home office for remote workers).
-                - keyMessages: Array of strings. 2-3 key marketing messages or values.
-                - features: Array of strings. 3 distinct features (e.g. "28mm thick top").
-                - specs: Array of strings. Technical specifications like dimensions, materials, etc.
-                - releaseDate: "YYYY년 MM월 DD일" format if available, else placeholder.
-                - channel: Sales channel or link source.
-                - promotion: Any promotion or discount info.
+                const prompt = `아래 제품 페이지 콘텐츠에서 JSON만 추출하세요. 순수 JSON만 출력.
+{"brand":"브랜드명","productName":"제품명","oneLineDef":"한 줄 슬로건","context":"타겟/맥락","keyMessages":["메시지1","메시지2"],"features":["특징1","특징2","특징3"],"specs":["스펙1","스펙2"],"releaseDate":"YYYY년 MM월 DD일","channel":"판매채널","promotion":"할인정보"}
 
-                Content:
-                ${rawText.substring(0, 15000)} 
-                `;
-                // Limit text length to avoid token limits if necessary, though 1.5 flash has large context.
+콘텐츠:
+${rawText.substring(0, 12000)}`;
 
-                const result = await model.generateContent(prompt);
-                const responseText = result.response.text();
-                const geminiData = JSON.parse(responseText);
+                const response = await groq.chat.completions.create({
+                    model: GROQ_MODEL,
+                    messages: [
+                        { role: "system", content: "당신은 제품 정보 추출 전문가입니다. 반드시 JSON만 출력합니다." },
+                        { role: "user", content: prompt },
+                    ],
+                    response_format: { type: "json_object" },
+                    temperature: 0.2,
+                    max_tokens: 1024,
+                });
 
-                // Merge Gemini data
-                processedData = { ...processedData, ...geminiData };
-
-                // Ensure array fields are arrays
+                const groqData = JSON.parse(response.choices[0].message.content || "{}");
+                processedData = { ...processedData, ...groqData };
                 if (!Array.isArray(processedData.features)) processedData.features = [];
                 if (!Array.isArray(processedData.specs)) processedData.specs = [];
                 if (!Array.isArray(processedData.keyMessages)) processedData.keyMessages = [];
+                console.log("Groq processing complete.");
 
-                console.log("Gemini processing complete.");
-
-            } catch (geminiError) {
-                console.error("Gemini Error:", geminiError);
-                // Continue with partial data if Gemini fails
+            } catch (aiError) {
+                console.error("Groq Error:", aiError);
             }
         }
 
