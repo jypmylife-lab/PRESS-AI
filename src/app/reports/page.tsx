@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Line } from 'recharts';
 import Tesseract from 'tesseract.js';
 import localforage from "localforage";
+import { extractTextFromFile as globalExtractText } from "@/lib/file-parser";
 
 // Types matching CalendarPage
 interface Event {
@@ -126,7 +127,7 @@ export default function ReportsPage() {
         }
     };
 
-    const extractTextFromFile = async (file: File): Promise<{ base64: string, text: string }> => {
+    const processFileLocal = async (file: File): Promise<{ base64: string, text: string }> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onloadend = async () => {
@@ -134,28 +135,16 @@ export default function ReportsPage() {
                     const base64 = reader.result as string;
                     let extractedText = "";
 
-                    if (file.type.startsWith('image/')) {
-                        const { data: { text } } = await Tesseract.recognize(base64, 'kor+eng');
-                        extractedText = text;
-                    } else if (file.type === 'application/pdf') {
-                        const pdfjs = await import('pdfjs-dist');
-                        // @ts-ignore
-                        pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
-
-                        const loadingTask = pdfjs.getDocument(base64);
-                        const pdf = await loadingTask.promise;
-                        let fullText = "";
-                        for (let i = 1; i <= pdf.numPages; i++) {
-                            const page = await pdf.getPage(i);
-                            const textContent = await page.getTextContent();
-                            fullText += textContent.items.map((item: any) => item.str).join(" ");
+                    try {
+                        if (file.type.startsWith('image/')) {
+                            const { data: { text } } = await Tesseract.recognize(base64, 'kor+eng');
+                            extractedText = text;
+                        } else {
+                            extractedText = await globalExtractText(file);
                         }
-                        extractedText = fullText;
-                    } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx')) {
-                        const mammoth = await import('mammoth');
-                        const arrayBuffer = await file.arrayBuffer();
-                        const result = await mammoth.extractRawText({ arrayBuffer });
-                        extractedText = result.value;
+                    } catch (parseError) {
+                        console.error(`Text parsing error for ${file.name}:`, parseError);
+                        // We continue with empty text if parsing fails so the file is still saved
                     }
 
                     resolve({ base64, text: extractedText });
@@ -310,7 +299,7 @@ export default function ReportsPage() {
                     const { date: fileDate, title: fileTitle } = extractInfoFromFilename(file.name);
 
                     // Extract text for article count and fallback
-                    const { base64, text } = await extractTextFromFile(file);
+                    const { base64, text } = await processFileLocal(file);
 
                     const extractedDate = fileDate || extractDateFromText(text) || new Date();
                     const extractedTitle = fileTitle || extractTitleFromText(text, file.name);
@@ -344,6 +333,8 @@ export default function ReportsPage() {
                 }));
                 await localforage.setItem(STORAGE_KEY, toSave);
                 alert(`${newEvents.length}개의 파일이 성공적으로 업로드되었습니다.`);
+            } else {
+                alert("처리할 수 있는 파일이 없습니다. (지원하지 않는 형식이거나 용량이 너무 큼)");
             }
         } catch (error) {
             console.error("Bulk upload failed", error);
@@ -393,7 +384,7 @@ export default function ReportsPage() {
         setIsAnalyzing(eventId);
 
         try {
-            const { base64, text } = await extractTextFromFile(file);
+            const { base64, text } = await processFileLocal(file);
 
             const count = countArticlesFromText(text);
 
