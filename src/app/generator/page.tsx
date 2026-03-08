@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,7 +8,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription }
 import { Label } from "@/components/ui/label";
 import {
     Check, Copy, ArrowRight, ArrowLeft, Wand2, Upload, Calendar as CalendarIcon,
-    FileText, Plus, Trash2, Download, BookOpen, ChevronDown, ChevronUp, Link, Type, AlignLeft
+    FileText, Plus, Trash2, Download, BookOpen, ChevronDown, ChevronUp, Link, Type, AlignLeft, Loader2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -108,7 +108,7 @@ function downloadAsWord(content: string, title: string) {
 // ————————————————————
 // 메인 컴포넌트
 // ————————————————————
-export default function GeneratorPage() {
+function GeneratorContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -796,5 +796,13 @@ export default function GeneratorPage() {
                 )}
             </AnimatePresence>
         </div>
+    );
+}
+
+export default function GeneratorPage() {
+    return (
+        <Suspense fallback={<div className="flex items-center justify-center min-h-[50vh]"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
+            <GeneratorContent />
+        </Suspense>
     );
 }
