@@ -89,16 +89,16 @@ function downloadAsWord(params: { content: string; title: string; summaries: str
         ? `<div style="margin-bottom: 20px;">${summaries.map(s => `<p style="line-height: 1.6; margin: 0.2rem 0;">- ${s}</p>`).join('')}</div>`
         : "";
 
-    // 이미지 크기 제한 (max-width: 400px)
+    // 이미지 크기 제한 (max-width: 13cm)
     const imageHtml = imageContent
-        ? `<div style="text-align: center; margin-bottom: 20px;"><img src="${imageContent}" style="max-width: 400px; height: auto;" /></div>`
+        ? `<div style="text-align: center; margin-bottom: 20px;"><img src="${imageContent}" style="max-width: 13cm; height: auto;" /></div>`
         : "";
 
-    // 본문 내 브랜드 소개 텍스트 볼드 처리 (만약 있다면)
+    // 본문 내 브랜드 소개 텍스트 볼드 처리 (만약 있다면) 및 문단 띄어쓰기
     let processedContent = content;
     const brandIntroTitle = `${brandName || "데스커(DESKER)"} 브랜드 소개`;
     if (processedContent.includes(brandIntroTitle)) {
-        processedContent = processedContent.replace(brandIntroTitle, `<strong>${brandIntroTitle}</strong><br/>`);
+        processedContent = processedContent.replace(brandIntroTitle, `<br/><br/><strong>${brandIntroTitle}</strong><br/>`);
     }
 
     const htmlContent = `
