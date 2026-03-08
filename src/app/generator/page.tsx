@@ -81,7 +81,15 @@ const INITIAL_FORM: FormState = {
 // ————————————————————
 // Word 다운로드 (라이브러리 없이 HTML → .doc)
 // ————————————————————
-function downloadAsWord(content: string, title: string) {
+function downloadAsWord(params: { content: string; title: string; summaries: string[]; imageContent?: string }) {
+    const { content, title, summaries, imageContent } = params;
+    const summariesHtml = summaries.length > 0
+        ? `<div style="margin-bottom: 20px;">${summaries.map(s => `<p style="font-weight: bold; color: #2563eb;">✓ ${s}</p>`).join('')}</div>`
+        : "";
+    const imageHtml = imageContent
+        ? `<div style="text-align: center; margin-bottom: 20px;"><img src="${imageContent}" style="max-width: 100%; height: auto;" /></div>`
+        : "";
+
     const htmlContent = `
     <html xmlns:o='urn:schemas-microsoft-com:office:office'
           xmlns:w='urn:schemas-microsoft-com:office:word'
@@ -93,7 +101,9 @@ function downloadAsWord(content: string, title: string) {
     </style>
     </head>
     <body>
-      <h1 style="font-size:14pt;font-weight:bold;">${title}</h1>
+      <h1 style="font-size:16pt;font-weight:bold;margin-bottom:24px;">${title}</h1>
+      ${summariesHtml}
+      ${imageHtml}
       ${content.includes('<p>') ? content : content.split("\n").map(line => `<p>${line || "&nbsp;"}</p>`).join("")}
     </body></html>`;
     const blob = new Blob(["\uFEFF" + htmlContent], { type: "application/msword" });
@@ -766,7 +776,12 @@ function GeneratorContent() {
                                         {/* Word 다운로드 */}
                                         <Button
                                             variant="outline"
-                                            onClick={() => downloadAsWord(editedContent, selectedTitle || form.prSubject)}
+                                            onClick={() => downloadAsWord({
+                                                content: editedContent,
+                                                title: selectedTitle || form.prSubject,
+                                                summaries: selectedSummaries,
+                                                imageContent: form.imageContent
+                                            })}
                                         >
                                             <Download className="w-4 h-4 mr-2" /> Word 추출
                                         </Button>
