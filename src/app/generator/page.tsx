@@ -89,9 +89,10 @@ function downloadAsWord(params: { content: string; title: string; summaries: str
         ? `<div style="margin-bottom: 20px;">${summaries.map(s => `<p style="line-height: 1.6; margin: 0.2rem 0;">- ${s}</p>`).join('')}</div>`
         : "";
 
-    // 이미지 크기 제한 (max-width: 13cm)
+    // 이미지 크기 제한 (Word는 CSS max-width를 무시하는 경우가 많으므로 명시적인 width 픽셀 속성 사용)
+    // 13cm는 96 DPI 기준 약 491 픽셀, 인쇄용 일반 기준으로는 절반 정도. "width=491" 설정.
     const imageHtml = imageContent
-        ? `<div style="text-align: center; margin-bottom: 20px;"><img src="${imageContent}" style="max-width: 13cm; height: auto;" /></div>`
+        ? `<div style="text-align: center; margin-bottom: 20px;"><img src="${imageContent}" width="491" style="height: auto;" /></div>`
         : "";
 
     // 본문 내 브랜드 소개 텍스트 볼드 처리 (만약 있다면) 및 문단 띄어쓰기
