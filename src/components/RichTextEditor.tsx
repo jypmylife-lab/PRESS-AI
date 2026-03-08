@@ -106,7 +106,7 @@ export default function RichTextEditor({ value, onChange, className }: RichTextE
         },
         editorProps: {
             attributes: {
-                class: 'prose prose-sm sm:prose-base max-w-none focus:outline-none min-h-[500px] p-8 font-serif leading-loose text-[15px] bg-white prose-p:mb-5',
+                class: 'prose prose-sm sm:prose-base max-w-none focus:outline-none min-h-[500px] p-8 leading-loose text-[15px] bg-white [&_p]:!mb-6 [&_p]:!leading-relaxed',
             },
         },
     })

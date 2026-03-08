@@ -523,7 +523,7 @@ function CalendarContent() {
 
                                     {selectedDetailEvent.content ? (
                                         <div
-                                            className="whitespace-pre-wrap p-6 bg-white rounded-lg border font-serif leading-loose text-[15px] prose prose-sm max-w-none shadow-inner text-black prose-p:mb-5"
+                                            className="whitespace-pre-wrap p-6 bg-white rounded-lg border leading-loose text-[15px] prose prose-sm max-w-none shadow-inner text-black [&_p]:!mb-6 [&_p]:!leading-relaxed"
                                             dangerouslySetInnerHTML={{ __html: selectedDetailEvent.content }}
                                         />
                                     ) : (

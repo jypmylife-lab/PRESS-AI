@@ -703,7 +703,7 @@ function GeneratorContent() {
                                 <CardDescription>선택한 타이틀과 요약문이 상단에 반영됩니다. 여기서 자유롭게 최종 수정을 진행하세요.</CardDescription>
                             </CardHeader>
                             <CardContent className="p-0 flex flex-col bg-white">
-                                <div className="p-8 pb-4 font-serif space-y-5 border-b border-dashed border-gray-200 bg-gray-50/30">
+                                <div className="p-8 pb-4 space-y-5 border-b border-dashed border-gray-200 bg-gray-50/30">
                                     <Input
                                         className="w-full text-2xl font-bold text-gray-900 border-0 border-b-2 border-transparent hover:border-gray-200 focus:border-blue-500 focus:ring-0 px-0 rounded-none transition-colors bg-transparent h-auto py-2"
                                         value={selectedTitle}
