@@ -531,16 +531,14 @@ export default function ReportsPage() {
                                 >
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                                     <XAxis dataKey="monthName" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} dy={10} />
-                                    <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} label={{ value: '배포(건)', angle: -90, position: 'insideLeft', offset: 10, fontSize: 10, fill: '#64748b' }} />
+                                    <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} hide={false} domain={[0, (dataMax: number) => Math.max(dataMax, 5)]} label={{ value: '기사(건)', angle: -90, position: 'insideLeft', offset: 10, fontSize: 10, fill: '#64748b' }} />
                                     <YAxis
                                         yAxisId="right"
                                         orientation="right"
                                         axisLine={false}
                                         tickLine={false}
                                         tick={{ fontSize: 12 }}
-                                        hide={false}
-                                        domain={[0, (dataMax: number) => Math.max(dataMax, 5)]}
-                                        label={{ value: '기사(건)', angle: 90, position: 'insideRight', offset: 10, fontSize: 10, fill: '#64748b' }}
+                                        label={{ value: '배포(건)', angle: 90, position: 'insideRight', offset: 10, fontSize: 10, fill: '#64748b' }}
                                     />
                                     <Tooltip
                                         cursor={false}
@@ -549,7 +547,7 @@ export default function ReportsPage() {
                                     />
                                     <Legend verticalAlign="top" height={36} />
                                     <Bar
-                                        yAxisId="left"
+                                        yAxisId="right"
                                         dataKey="scheduled"
                                         name="배포 예정"
                                         fill="#facc15"
@@ -558,7 +556,7 @@ export default function ReportsPage() {
                                         style={{ cursor: "pointer" }}
                                     />
                                     <Bar
-                                        yAxisId="left"
+                                        yAxisId="right"
                                         dataKey="published"
                                         name="배포 완료"
                                         fill="#3b82f6"
@@ -567,7 +565,7 @@ export default function ReportsPage() {
                                         style={{ cursor: "pointer" }}
                                     />
                                     <Line
-                                        yAxisId="right"
+                                        yAxisId="left"
                                         type="linear"
                                         dataKey="articles"
                                         name="뉴스 기사 수"
