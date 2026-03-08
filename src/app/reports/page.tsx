@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Upload, FileText, ExternalLink, Calendar as CalendarIcon, FileUp, CheckCircle2, Download, Loader2, BarChart3, Trash2, RefreshCw, X } from "lucide-react";
+import { Upload, FileText, ExternalLink, Calendar as CalendarIcon, FileUp, CheckCircle2, Download, Loader2, BarChart3, Trash2, RefreshCw, X, BookOpen } from "lucide-react";
 import { format, isSameMonth, startOfYear, addMonths, isPast, isToday } from "date-fns";
 import { ko } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import Tesseract from 'tesseract.js';
 import localforage from "localforage";
 import { extractTextFromFile as globalExtractText } from "@/lib/file-parser";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 
 // Types matching CalendarPage
 interface Event {
@@ -46,6 +48,9 @@ export default function ReportsPage() {
     const [trackingKeyword, setTrackingKeyword] = useState("데스커");
     const [isBulkAnalyzing, setIsBulkAnalyzing] = useState(false);
     const bulkInputRef = useRef<HTMLInputElement>(null);
+
+    // Convex data
+    const trainedPrs = useQuery(api.pressReleases.getList);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -508,6 +513,7 @@ export default function ReportsPage() {
                 <TabsList>
                     <TabsTrigger value="yearly" className="gap-2"><BarChart3 className="w-4 h-4" /> 연간 현황</TabsTrigger>
                     <TabsTrigger value="archive" className="gap-2"><FileText className="w-4 h-4" /> 성과 자료 아카이브</TabsTrigger>
+                    <TabsTrigger value="trained" className="gap-2"><BookOpen className="w-4 h-4" /> 학습된 과거 보도자료</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="yearly" className="space-y-6">
@@ -778,6 +784,67 @@ export default function ReportsPage() {
                                                                 >
                                                                     <Trash2 className="w-4 h-4" />
                                                                 </Button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="trained">
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <div className="space-y-1.5">
+                                <CardTitle>학습된 과거 보도자료 DB</CardTitle>
+                                <CardDescription>AI가 새로운 보도자료를 작성할 때 텍스트 톤앤매너 리스트로 참조하는 사내 구축 데이터베이스입니다.</CardDescription>
+                            </div>
+                            <Button variant="outline" size="sm" onClick={() => router.push('/admin/past-pr')}>
+                                <ExternalLink className="w-4 h-4 mr-2" />
+                                Admin 관리화면 가기
+                            </Button>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-4">
+                                {trainedPrs === undefined ? (
+                                    <div className="flex flex-col items-center justify-center py-12 border rounded-lg bg-muted/10 border-dashed gap-3">
+                                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                                        <p className="text-muted-foreground">데이터를 불러오는 중입니다...</p>
+                                    </div>
+                                ) : trainedPrs.length === 0 ? (
+                                    <div className="text-center py-12 border rounded-lg bg-muted/10 border-dashed">
+                                        <p className="text-muted-foreground">아직 학습된 보도자료가 없습니다. Admin 페이지에서 등록해주세요.</p>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-md border">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-sm">
+                                                <thead>
+                                                    <tr className="bg-muted/50 border-b">
+                                                        <th className="p-3 text-left font-medium">유형</th>
+                                                        <th className="p-3 text-left font-medium">보도자료 제목 (주제)</th>
+                                                        <th className="p-3 text-left font-medium">학습 등록일</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {trainedPrs.map((pr: any) => (
+                                                        <tr key={pr._id} className="border-b last:border-0 hover:bg-muted/30">
+                                                            <td className="p-3 w-[150px]">
+                                                                <Badge variant="outline" className="bg-white">
+                                                                    {pr.type === "product" ? "신제품/제품 소개" :
+                                                                        pr.type === "campaign" ? "브랜드 캠페인 소개" :
+                                                                            pr.type === "activity" ? "브랜드 활동 소개" :
+                                                                                "기타"}
+                                                                </Badge>
+                                                            </td>
+                                                            <td className="p-3 font-medium min-w-[200px]">{pr.subject}</td>
+                                                            <td className="p-3 text-muted-foreground w-[150px]">
+                                                                {format(new Date(pr._creationTime), "yyyy-MM-dd HH:mm", { locale: ko })}
                                                             </td>
                                                         </tr>
                                                     ))}
