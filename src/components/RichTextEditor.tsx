@@ -115,10 +115,14 @@ export default function RichTextEditor({ value, onChange, className }: RichTextE
     useEffect(() => {
         if (editor && value && editor.getHTML() === '<p></p>' && value !== '<p></p>') {
             // 본문이 아직 비어있고, 넘겨받은 value가 존재할 때만 덮어씀
-            let formattedValue = value;
-            if (!value.includes('<p>')) {
+            // LLM이 텍스트로 보낸 \\n 등의 리터럴 문자를 실제 줄바꿈으로 변환
+            let formattedValue = value.replace(/\\n/g, '\n');
+            if (!formattedValue.includes('<p>')) {
                 // GPT가 평문으로 줬을 경우 HTML로 감싸줌
-                formattedValue = value.split('\n').filter(Boolean).map(line => `<p>${line}</p>`).join('');
+                formattedValue = formattedValue.split('\n').filter(Boolean).map(line => `<p>${line}</p>`).join('');
+            } else {
+                // HTML 안의 남은 줄바꿈 문자들을 <br> 태그로 변환
+                formattedValue = formattedValue.replace(/\n/g, '<br/>');
             }
             editor.commands.setContent(formattedValue);
             onChange(formattedValue); // 초기 포맷팅 결과를 상위로 다시 전달
