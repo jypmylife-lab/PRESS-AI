@@ -513,7 +513,7 @@ export default function ReportsPage() {
                 <TabsList>
                     <TabsTrigger value="yearly" className="gap-2"><BarChart3 className="w-4 h-4" /> 연간 현황</TabsTrigger>
                     <TabsTrigger value="archive" className="gap-2"><FileText className="w-4 h-4" /> 성과 자료 아카이브</TabsTrigger>
-                    <TabsTrigger value="trained" className="gap-2"><BookOpen className="w-4 h-4" /> 학습된 과거 보도자료</TabsTrigger>
+                    {/* <TabsTrigger value="trained" className="gap-2"><BookOpen className="w-4 h-4" /> 학습된 과거 보도자료</TabsTrigger> */}
                 </TabsList>
 
                 <TabsContent value="yearly" className="space-y-6">
@@ -797,7 +797,7 @@ export default function ReportsPage() {
                     </Card>
                 </TabsContent>
 
-                <TabsContent value="trained">
+                {/* <TabsContent value="trained">
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div className="space-y-1.5">
@@ -856,7 +856,7 @@ export default function ReportsPage() {
                             </div>
                         </CardContent>
                     </Card>
-                </TabsContent>
+                </TabsContent> */}
             </Tabs>
         </div>
     );
