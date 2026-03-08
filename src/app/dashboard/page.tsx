@@ -115,7 +115,14 @@ function NewsClippingContent() {
             const maxPages = 10;
             for (let p = 0; p < maxPages; p++) {
                 const start = p * 100 + 1;
-                const res = await fetch(`/api/news-search?query=${encodeURIComponent(searchQuery)}&sort=${searchSort}&display=100&start=${start}`);
+                // Add timestamp to completely bypass browser caching during search
+                const res = await fetch(`/api/news-search?query=${encodeURIComponent(searchQuery)}&sort=${searchSort}&display=100&start=${start}&_t=${Date.now()}`);
+
+                if (!res.ok) {
+                    console.error("Naver API error:", await res.text());
+                    break;
+                }
+
                 const data = await res.json();
 
                 if (data.items && data.items.length > 0) {
@@ -125,6 +132,9 @@ function NewsClippingContent() {
                 } else {
                     break;
                 }
+
+                // Add tiny delay to prevent Naver API rate limiting (429 Too Many Requests)
+                await new Promise(resolve => setTimeout(resolve, 50));
             }
             setNews(allItems);
         } catch (error) {
@@ -180,6 +190,13 @@ function NewsClippingContent() {
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
+
+        // 검색 실행 시 기존에 적용된 연도/월 필터를 초기화하여 새 검색 결과가 가려지지 않게 함
+        setSelectedYear("all");
+        setSelectedMonth("all");
+
+        // 필터 초기화 시 위 useEffect가 동작하여 fetchNews를 중복 호출할 수 있지만, query와 sort가 동일하므로 큰 문제는 없음
+        // 명시적으로 여기서도 호출하여 확실히 갱신되도록 보장
         fetchNews(query, sort);
     };
 

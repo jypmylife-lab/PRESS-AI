@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('query');
@@ -26,6 +28,7 @@ export async function GET(request: Request) {
                     'X-Naver-Client-Id': clientId,
                     'X-Naver-Client-Secret': clientSecret,
                 },
+                cache: 'no-store'
             }
         );
 
