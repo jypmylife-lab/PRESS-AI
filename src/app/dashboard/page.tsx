@@ -79,31 +79,21 @@ function NewsClippingContent() {
         setSelectedYear(y);
         setSelectedMonth(m);
 
-        const currentYearStr = new Date().getFullYear().toString();
-        // Use 'sim' (relevance) for past years to ensure we find old articles
-        // Use 'date' (latest) for current year or all years
-        const searchSort = (y !== "all" && y !== currentYearStr) ? "sim" : "date";
-
-        setSort(searchSort); // Sync UI state
-
-        console.log(`Searching for: ${query} with sort: ${searchSort} (Year: ${y}, Month: ${m})`);
-        fetchNews(query, searchSort);
+        // URL 파라미터(연도/월)로 넘어온 경우(성과리포트에서 클릭시):
+        // 실제로 검색을 자동 실행하여 원하는 기간의 기사를 관련성 순으로 가져옵니다.
+        // 일반 로딩시(URL 파라미터 없음):
+        // 사용자가 검색어 입력 후 검색 버튼을 놀레야만 실행됨 (자동 모드 X)
+        if (urlYear || urlMonth) {
+            const currentYearStr = new Date().getFullYear().toString();
+            const searchSort = (y !== "all" && y !== currentYearStr) ? "sim" : "date";
+            setSort(searchSort);
+            fetchNews(query, searchSort);
+        }
     }, [urlYear, urlMonth]);
 
-    // Only trigger on manual dropdown changes (when no URL params)
-    useEffect(() => {
-        if (!urlYear && !urlMonth) {
-            console.log(`Filter changed - Year: ${selectedYear}, Month: ${selectedMonth}`);
-            // If filters change, we might want to re-fetch if we change sort logic, 
-            // but for now strictly following "Search for Desker only".
-            // If we want to support finding old data, we might need to toggle sort here too, 
-            // but let's stick to current sort or just re-filter.
-            // Actually, if we just filter client side, we don't need to fetchNews if we already have data?
-            // But usually we fetch on filter change to ensure we have data if we implemented pagination.
-            // Here we fetch max 1000 at once.
-            fetchNews(query, sort);
-        }
-    }, [selectedYear, selectedMonth]);
+    // 연도/월 필터 변경은 클라이언트에서만 필터링 수행 (재호출 없음)
+    // groupedNewsByDate가 useMemo로 자동 필터링하므로 별도 fetch 불필요
+
 
     const fetchNews = async (searchQuery: string = query, searchSort: string = sort) => {
         if (!searchQuery.trim()) return;
@@ -133,8 +123,8 @@ function NewsClippingContent() {
                     break;
                 }
 
-                // Add tiny delay to prevent Naver API rate limiting (429 Too Many Requests)
-                await new Promise(resolve => setTimeout(resolve, 50));
+                // Rate limit 방지: 200ms 딜레이 (Reports와 동시 호출 시 충돌 방지)
+                await new Promise(resolve => setTimeout(resolve, 200));
             }
             setNews(allItems);
         } catch (error) {

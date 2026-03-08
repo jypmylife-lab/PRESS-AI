@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Upload, FileText, ExternalLink, Calendar as CalendarIcon, FileUp, CheckCircle2, Download, Loader2, BarChart3, Trash2, RefreshCw, X, BookOpen } from "lucide-react";
+import { Upload, FileText, ExternalLink, Calendar as CalendarIcon, FileUp, CheckCircle2, Download, Loader2, BarChart3, Trash2, RefreshCw, X, BookOpen, Search, Newspaper } from "lucide-react";
 import { format, isSameMonth, startOfYear, addMonths, isPast, isToday } from "date-fns";
 import { ko } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -45,9 +45,11 @@ export default function ReportsPage() {
     const [isFetchingCount, setIsFetchingCount] = useState<number | null>(null);
     const [keywordMonthlyStats, setKeywordMonthlyStats] = useState<Record<number, number>>({});
     const [isLoadingStats, setIsLoadingStats] = useState(false);
-    const [trackingKeyword, setTrackingKeyword] = useState("데스커");
     const [isBulkAnalyzing, setIsBulkAnalyzing] = useState(false);
     const bulkInputRef = useRef<HTMLInputElement>(null);
+
+    // Hardcoded default brand keyword for Naver search (same as News Clipping default)
+    const BRAND_KEYWORD = "데스커";
 
     // Convex data
     const trainedPrs = useQuery(api.pressReleases.getList);
@@ -84,7 +86,8 @@ export default function ReportsPage() {
         };
 
         loadData();
-        fetchKeywordMonthlyStats();
+        // ✅ 자동 호출 제거 - 뉴스클리핑과 동시 실행 시 Rate Limit 충돌 방지
+        // 사용자가 '네이버 데이터 불러오기' 버튼을 클릭할 때만 호출됨
     }, [currentYear]);
 
     const fetchKeywordMonthlyStats = async () => {
@@ -94,19 +97,18 @@ export default function ReportsPage() {
         for (let i = 0; i < 12; i++) stats[i] = 0;
 
         try {
-            // For historical coverage, we include the year in the query.
-            // This leverages Naver's search logic to find items specifically relevant to that year.
-            const searchQuery = `${trackingKeyword} ${currentYear}`;
+            // ✅ 뉴스 클리핑과 완전히 동일한 검색어 + 정렬 방식 사용
+            // 뉴스 클리핑 수동 검색의 기본값은 sort=date이므로 동일하게 맞춤
+            // (과거 연도에도 sim 대신 date를 사용해야 수치가 일치함)
+            const searchQuery = BRAND_KEYWORD;
+            const sortType = "date"; // 항상 최신순 - 뉴스 클리핑 기본값과 동일
 
             // Fetch up to 1000 results (maximal allowed by Naver API)
             const maxPages = 10;
 
             for (let p = 0; p < maxPages; p++) {
                 const start = p * 100 + 1;
-                // We use sort=sim (relevance) when searching with a year for better historical spread,
-                // or sort=date if it's the current year to get latest updates.
-                const sortType = currentYear === new Date().getFullYear() ? "date" : "sim";
-                const res = await fetch(`/api/news-search?query=${encodeURIComponent(searchQuery)}&sort=${sortType}&display=100&start=${start}`);
+                const res = await fetch(`/api/news-search?query=${encodeURIComponent(searchQuery)}&sort=${sortType}&display=100&start=${start}&_t=${Date.now()}`);
                 const data = await res.json();
 
                 if (data.items && data.items.length > 0) {
@@ -114,15 +116,21 @@ export default function ReportsPage() {
                         const date = new Date(item.pubDate);
                         const itemYear = date.getFullYear();
 
-                        // Count if it matches the target year exactly
+                        // 조회 연도와 일치하는 건만 월별로 집계
                         if (itemYear === currentYear) {
                             const month = date.getMonth();
                             stats[month] = (stats[month] || 0) + 1;
                         }
                     });
+
+                    // 마지막 페이지 조기 탈출 (뉴스 클리핑과 동일)
+                    if (data.items.length < 100) break;
                 } else {
                     break; // No more items
                 }
+
+                // Rate limit 방지: 200ms 딜레이 (Reports + 뉴스클리핑 동시 호출 시 충돌 방지)
+                await new Promise(resolve => setTimeout(resolve, 200));
             }
             setKeywordMonthlyStats(stats);
         } catch (error) {
@@ -455,12 +463,12 @@ export default function ReportsPage() {
         const scheduled = monthEvents.filter(e => e.status === "예정됨" && e.date >= today).length;
         const published = monthEvents.filter(e => e.status === "배포 완료" || (e.status === "예정됨" && e.date < today)).length;
 
-        // Use keyword stats if available, otherwise fallback to itemized counts
-        const articles = keywordMonthlyStats[monthIndex] !== undefined && keywordMonthlyStats[monthIndex] > 0
-            ? keywordMonthlyStats[monthIndex]
-            : monthEvents.reduce((sum, e) => sum + (e.articleCount || 0), 0);
+        // manualArticles: from archive (성과 자료 아카이브)
+        const manualArticles = monthEvents.reduce((sum, e) => sum + (e.articleCount || 0), 0);
+        // naverArticles: from Naver API (same as News Clipping)
+        const naverArticles = keywordMonthlyStats[monthIndex] || 0;
 
-        return { scheduled, published, articles, monthName: `${monthIndex + 1}월` };
+        return { scheduled, published, manualArticles, naverArticles, monthName: `${monthIndex + 1}월` };
     };
 
     const chartData = MONTHS.map(m => getMonthStats(m));
@@ -468,27 +476,42 @@ export default function ReportsPage() {
     const totalStats = chartData.reduce((acc, curr) => ({
         scheduled: acc.scheduled + curr.scheduled,
         published: acc.published + curr.published,
-        articles: acc.articles + curr.articles
-    }), { scheduled: 0, published: 0, articles: 0 });
+        manualArticles: acc.manualArticles + curr.manualArticles,
+        naverArticles: acc.naverArticles + curr.naverArticles
+    }), { scheduled: 0, published: 0, manualArticles: 0, naverArticles: 0 });
 
     const publishedEvents = events.filter(e => e.status === "배포 완료" || (e.status === "예정됨" && e.date < today))
         .sort((a, b) => b.date.getTime() - a.date.getTime());
 
     return (
         <div className="space-y-6 pb-12">
-            <div className="flex justify-between items-end">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
                 <div className="space-y-2">
                     <h2 className="text-3xl font-bold tracking-tight">성과 리포트</h2>
                     <p className="text-muted-foreground">배포 캘린더 데이터 기반 연간 및 상세 성과 현황입니다.</p>
                 </div>
-                <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-lg border">
-                    <Button variant="ghost" size="sm" onClick={() => setCurrentYear(prev => prev - 1)}>{currentYear - 1}</Button>
-                    <div className="px-4 font-bold text-primary">{currentYear}</div>
-                    <Button variant="ghost" size="sm" onClick={() => setCurrentYear(prev => prev + 1)}>{currentYear + 1}</Button>
+                <div className="flex items-center gap-3 flex-wrap justify-end">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 gap-2 text-green-700 border-green-300 hover:bg-green-50"
+                        onClick={fetchKeywordMonthlyStats}
+                        disabled={isLoadingStats}
+                    >
+                        {isLoadingStats
+                            ? <><Loader2 className="w-4 h-4 animate-spin" /> 검색 중...           </>
+                            : <><Search className="w-4 h-4" /> 네이버 뉴스 불러오기</>
+                        }
+                    </Button>
+                    <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-lg border">
+                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setCurrentYear(prev => prev - 1)}>{currentYear - 1}</Button>
+                        <div className="px-3 font-bold text-primary text-sm">{currentYear}</div>
+                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setCurrentYear(prev => prev + 1)}>{currentYear + 1}</Button>
+                    </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <Card className="bg-gradient-to-br from-yellow-50 to-white dark:from-yellow-950/20">
                     <CardHeader className="p-4 pb-2">
                         <CardDescription>배포 계획 (연간)</CardDescription>
@@ -503,8 +526,14 @@ export default function ReportsPage() {
                 </Card>
                 <Card className="bg-gradient-to-br from-primary/5 to-white dark:from-primary/10">
                     <CardHeader className="p-4 pb-2">
-                        <CardDescription>총 뉴스 기사 수</CardDescription>
-                        <CardTitle className="text-2xl text-primary">{totalStats.articles}건</CardTitle>
+                        <CardDescription>뉴스 기사 수 (아카이브)</CardDescription>
+                        <CardTitle className="text-2xl text-primary">{totalStats.manualArticles}건</CardTitle>
+                    </CardHeader>
+                </Card>
+                <Card className="bg-gradient-to-br from-green-50 to-white dark:from-green-950/10">
+                    <CardHeader className="p-4 pb-2">
+                        <CardDescription>네이버 뉴스 기사 수</CardDescription>
+                        <CardTitle className="text-2xl text-green-600">{totalStats.naverArticles}건</CardTitle>
                     </CardHeader>
                 </Card>
             </div>
@@ -537,13 +566,16 @@ export default function ReportsPage() {
                                 >
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                                     <XAxis dataKey="monthName" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} dy={10} />
-                                    <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} hide={false} domain={[0, (dataMax: number) => Math.max(dataMax, 5)]} label={{ value: '기사(건)', angle: -90, position: 'insideLeft', offset: 10, fontSize: 10, fill: '#64748b' }} />
+                                    <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} domain={[0, (dataMax: number) => Math.max(dataMax, 5)]} label={{ value: '기사(건)', angle: -90, position: 'insideLeft', offset: 10, fontSize: 10, fill: '#64748b' }} />
                                     <YAxis
                                         yAxisId="right"
                                         orientation="right"
                                         axisLine={false}
                                         tickLine={false}
                                         tick={{ fontSize: 12 }}
+                                        domain={[0, 5]}
+                                        ticks={[0, 1, 2, 3, 4, 5]}
+                                        allowDecimals={false}
                                         label={{ value: '배포(건)', angle: 90, position: 'insideRight', offset: 10, fontSize: 10, fill: '#64748b' }}
                                     />
                                     <Tooltip
@@ -573,12 +605,25 @@ export default function ReportsPage() {
                                     <Line
                                         yAxisId="left"
                                         type="linear"
-                                        dataKey="articles"
+                                        dataKey="manualArticles"
                                         name="뉴스 기사 수"
                                         stroke="#18181b"
                                         strokeWidth={3}
-                                        dot={{ r: 8, fill: "#18181b", strokeWidth: 3, stroke: "#fff", cursor: "pointer" }}
-                                        activeDot={{ r: 10, strokeWidth: 3, stroke: "#fff", cursor: "pointer" }}
+                                        dot={{ r: 6, fill: "#18181b", strokeWidth: 2, stroke: "#fff", cursor: "pointer" }}
+                                        activeDot={{ r: 8, strokeWidth: 2, stroke: "#fff", cursor: "pointer" }}
+                                        legendType="circle"
+                                        connectNulls={true}
+                                        isAnimationActive={false}
+                                    />
+                                    <Line
+                                        yAxisId="left"
+                                        type="linear"
+                                        dataKey="naverArticles"
+                                        name="네이버 뉴스 기사 수"
+                                        stroke="#16a34a"
+                                        strokeWidth={3}
+                                        dot={{ r: 6, fill: "#16a34a", strokeWidth: 2, stroke: "#fff", cursor: "pointer" }}
+                                        activeDot={{ r: 8, strokeWidth: 2, stroke: "#fff", cursor: "pointer" }}
                                         legendType="circle"
                                         connectNulls={true}
                                         isAnimationActive={false}
@@ -590,8 +635,8 @@ export default function ReportsPage() {
 
                     <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
                         {MONTHS.map(m => {
-                            const { scheduled, published, articles } = getMonthStats(m);
-                            const hasData = scheduled > 0 || published > 0;
+                            const { scheduled, published, manualArticles, naverArticles } = getMonthStats(m);
+                            const hasData = scheduled > 0 || published > 0 || manualArticles > 0 || naverArticles > 0;
 
                             return (
                                 <Card
@@ -601,8 +646,8 @@ export default function ReportsPage() {
                                 >
                                     <CardHeader className="p-4 pb-1 flex flex-row items-center justify-between">
                                         <CardTitle className="text-base font-bold">{m + 1}월</CardTitle>
-                                        <div className="flex items-center gap-1.5">
-                                            {articles > 0 && (
+                                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                                            {manualArticles > 0 && (
                                                 <Badge
                                                     variant="secondary"
                                                     className="text-[10px] h-5 cursor-pointer hover:bg-secondary/80 flex items-center gap-1 shrink-0"
@@ -612,13 +657,26 @@ export default function ReportsPage() {
                                                     }}
                                                 >
                                                     <FileText className="h-3 w-3" />
-                                                    {articles}건
+                                                    {manualArticles}건
+                                                </Badge>
+                                            )}
+                                            {naverArticles > 0 && (
+                                                <Badge
+                                                    variant="outline"
+                                                    className="text-[10px] h-5 text-green-700 border-green-200 cursor-pointer hover:bg-green-50 flex items-center gap-1 shrink-0"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        router.push(`/dashboard?year=${currentYear}&month=${m + 1}`);
+                                                    }}
+                                                >
+                                                    <Search className="h-3 w-3" />
+                                                    {naverArticles}건
                                                 </Badge>
                                             )}
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="h-6 w-6 rounded-full hover:bg-muted"
+                                                className="h-6 w-6 rounded-full hover:bg-muted shrink-0"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     router.push(`/dashboard?year=${currentYear}&month=${m + 1}`);
