@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Download, Upload, Edit, Check, X, Trash2, CalendarIcon, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Download, Upload, Edit, X, Trash2, CalendarIcon, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { format, isSameDay, isSameMonth, addDays, subDays, addMonths, subMonths } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -48,6 +48,7 @@ const MOCK_EVENTS: Event[] = [
 const STORAGE_KEY = "presscraft-events";
 
 function CalendarContent() {
+    const router = useRouter();
     const searchParams = useSearchParams();
     const [date, setDate] = useState<Date | undefined>(new Date());
     const [events, setEvents] = useState<Event[]>([]);
@@ -171,38 +172,14 @@ function CalendarContent() {
     };
 
     const handleStartEdit = (event: Event) => {
-        setEditTitle(event.title);
-        setEditContent(event.content || "");
-        setEditDate(event.date);
-        setIsEditing(true);
-    };
+        // 기존 캘린더 내 모달 수정 대신, PR 생성기 화면으로 이동 (임시 세션 저장 후)
+        sessionStorage.setItem('presscraft-edit-event', JSON.stringify(event));
 
-    const handleSaveEdit = async () => {
-        if (!selectedDetailEvent || !editDate) return;
-
-        const updatedEvents = events.map(e =>
-            e.id === selectedDetailEvent.id
-                ? { ...e, title: editTitle, content: editContent, date: editDate }
-                : e
-        );
-        setEvents(updatedEvents);
-
-        setSelectedDetailEvent({
-            ...selectedDetailEvent,
-            title: editTitle,
-            content: editContent,
-            date: editDate
-        });
-
-        const userEvents = updatedEvents.filter(e => e.id !== 1);
-        const toSave = userEvents.map(e => ({ ...e, date: e.date.toISOString() }));
-        await localforage.setItem(STORAGE_KEY, toSave);
-
-        setIsEditing(false);
-    };
-
-    const handleCancelEdit = () => {
-        setIsEditing(false);
+        // 컨텐츠 본문 유무에 따라 라우팅 파라미터 전달
+        // hasContent=true -> generator step 2
+        // hasContent=false -> generator step 1
+        const hasContent = event.content && event.content.trim().length > 0;
+        router.push(`/generator?editEventId=${event.id}&hasContent=${hasContent ? 'true' : 'false'}`);
     };
 
     const handleDeleteEvent = async (id: number) => {
@@ -473,7 +450,7 @@ function CalendarContent() {
                                             {selectedDetailEvent.status === '배포됨' || selectedDetailEvent.date < today ? '배포됨' : '예정됨'}
                                         </Badge>
                                     </div>
-                                    {!isEditing ? (
+                                    {!isEditing && (
                                         <div className="flex gap-2">
                                             <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => handleDeleteEvent(selectedDetailEvent.id)}>
                                                 <Trash2 className="w-4 h-4" />
@@ -483,63 +460,17 @@ function CalendarContent() {
                                                 <Download className="w-3.5 h-3.5" /> Word 추출
                                             </Button>
                                             <Button variant="outline" size="sm" className="h-8 gap-1" onClick={() => handleStartEdit(selectedDetailEvent)}>
-                                                <Edit className="w-3.5 h-3.5" /> 수정하기
-                                            </Button>
-                                        </div>
-                                    ) : (
-                                        <div className="flex gap-2">
-                                            <Button variant="ghost" size="sm" className="h-8 gap-1 text-muted-foreground" onClick={handleCancelEdit}>
-                                                <X className="w-3.5 h-3.5" /> 취소
-                                            </Button>
-                                            <Button variant="default" size="sm" className="h-8 gap-1 bg-green-600 hover:bg-green-700" onClick={handleSaveEdit}>
-                                                <Check className="w-3.5 h-3.5" /> 저장
+                                                <Edit className="w-3.5 h-3.5" /> 생성/수정
                                             </Button>
                                         </div>
                                     )}
                                 </div>
-                                {isEditing ? (
-                                    <div className="space-y-2 mt-2">
-                                        <Label className="text-xs text-muted-foreground">일정 제목</Label>
-                                        <Input
-                                            value={editTitle}
-                                            onChange={(e) => setEditTitle(e.target.value)}
-                                            className="text-xl font-bold h-11"
-                                        />
-                                    </div>
-                                ) : (
-                                    <DialogTitle className="text-2xl mt-1">{selectedDetailEvent.title}</DialogTitle>
-                                )}
+                                <DialogTitle className="text-2xl mt-1">{selectedDetailEvent.title}</DialogTitle>
                                 <div className="flex items-center gap-2 mt-1">
                                     <span className="text-sm text-muted-foreground">배포 예정일:</span>
-                                    {isEditing ? (
-                                        <Popover>
-                                            <PopoverTrigger asChild>
-                                                <Button
-                                                    variant={"outline"}
-                                                    size="sm"
-                                                    className={cn(
-                                                        "h-8 justify-start text-left font-normal px-2 bg-background",
-                                                        !editDate && "text-muted-foreground"
-                                                    )}
-                                                >
-                                                    <CalendarIcon className="mr-1 h-3.5 w-3.5" />
-                                                    {editDate ? format(editDate, "yyyy년 MM월 dd일", { locale: ko }) : <span>날짜 선택</span>}
-                                                </Button>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-auto p-0" align="start">
-                                                <Calendar
-                                                    mode="single"
-                                                    selected={editDate}
-                                                    onSelect={setEditDate}
-                                                    initialFocus
-                                                />
-                                            </PopoverContent>
-                                        </Popover>
-                                    ) : (
-                                        <p className="text-sm font-medium">
-                                            {format(selectedDetailEvent.date, "yyyy년 MM월 dd일", { locale: ko })}
-                                        </p>
-                                    )}
+                                    <p className="text-sm font-medium">
+                                        {format(selectedDetailEvent.date, "yyyy년 MM월 dd일", { locale: ko })}
+                                    </p>
                                 </div>
                             </DialogHeader>
 
@@ -578,7 +509,7 @@ function CalendarContent() {
                                 <div className="space-y-2">
                                     <div className="flex items-center justify-between">
                                         <Label className="text-muted-foreground">보도자료 본문</Label>
-                                        {!isEditing && selectedDetailEvent.content && (
+                                        {selectedDetailEvent.content && (
                                             <Button
                                                 variant="outline"
                                                 size="sm"
@@ -590,15 +521,14 @@ function CalendarContent() {
                                         )}
                                     </div>
 
-                                    {isEditing ? (
-                                        <Textarea
-                                            className="min-h-[400px] font-serif text-lg leading-relaxed p-6 bg-white text-black resize-none focus-visible:ring-1"
-                                            value={editContent}
-                                            onChange={(e) => setEditContent(e.target.value)}
+                                    {selectedDetailEvent.content ? (
+                                        <div
+                                            className="whitespace-pre-wrap p-6 bg-white rounded-lg border font-serif leading-loose text-[15px] prose prose-sm max-w-none shadow-inner text-black"
+                                            dangerouslySetInnerHTML={{ __html: selectedDetailEvent.content }}
                                         />
                                     ) : (
-                                        <div className="p-6 bg-white rounded-lg border font-serif text-lg leading-relaxed whitespace-pre-wrap shadow-inner text-black">
-                                            {selectedDetailEvent.content || "저장된 보도자료 내용이 없습니다."}
+                                        <div className="p-6 bg-white rounded-lg border text-center text-muted-foreground shadow-inner text-black">
+                                            아직 작성된 보도자료 내용이 없습니다. 상단의 '생성/수정' 버튼을 눌러 제작을 시작해보세요!
                                         </div>
                                     )}
                                 </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,7 +11,7 @@ import {
     FileText, Plus, Trash2, Download, BookOpen, ChevronDown, ChevronUp, Link, Type, AlignLeft
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
@@ -24,6 +24,7 @@ import {
 } from "../actions/generate-press-release";
 import { DEFAULT_BRAND_DESCRIPTION } from "./constants";
 import localforage from "localforage";
+import RichTextEditor from "@/components/RichTextEditor";
 
 // ————————————————————
 // 타입 정의
@@ -93,7 +94,7 @@ function downloadAsWord(content: string, title: string) {
     </head>
     <body>
       <h1 style="font-size:14pt;font-weight:bold;">${title}</h1>
-      ${content.split("\n").map(line => `<p>${line || "&nbsp;"}</p>`).join("")}
+      ${content.includes('<p>') ? content : content.split("\n").map(line => `<p>${line || "&nbsp;"}</p>`).join("")}
     </body></html>`;
     const blob = new Blob(["\uFEFF" + htmlContent], { type: "application/msword" });
     const url = URL.createObjectURL(blob);
@@ -109,6 +110,7 @@ function downloadAsWord(content: string, title: string) {
 // ————————————————————
 export default function GeneratorPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -127,6 +129,58 @@ export default function GeneratorPage() {
     // UI 상태
     const [showBrandEditor, setShowBrandEditor] = useState(false);
     const [analysisStatus, setAnalysisStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+    const [editEventId, setEditEventId] = useState<number | null>(null);
+
+    // 캘린더에서 넘어왔을 때 초기 데이터 복원
+    useEffect(() => {
+        const hasContentParam = searchParams.get('hasContent');
+        const editEventIdParam = searchParams.get('editEventId');
+
+        if (editEventIdParam) {
+            setEditEventId(Number(editEventIdParam));
+            const stored = sessionStorage.getItem('presscraft-edit-event');
+            if (stored) {
+                try {
+                    const event = JSON.parse(stored);
+
+                    // Step 1 복원
+                    setForm(prev => ({
+                        ...prev,
+                        prSubject: event.title || prev.prSubject,
+                        imageName: event.image || prev.imageName,
+                        imageContent: event.imageContent || prev.imageContent,
+                    }));
+
+                    // Step 2 복원
+                    if (event.content && event.content.trim().length > 0) {
+                        setEditedContent(event.content);
+                        setSelectedTitle(event.title);
+                        // 가상의 빈 result 객체를 만들어 Step2가 정상 렌더링되게 함
+                        setResult({
+                            titles: [event.title],
+                            summaries: [],
+                            content: event.content
+                        });
+                        setPublishDate(new Date(event.date));
+                    }
+
+                    // hasContent 파라미터에 따라 step 설정
+                    if (hasContentParam === 'true') {
+                        setStep(2);
+                    } else {
+                        setStep(1);
+                    }
+
+                    // 복원 후 세션 스토리지 삭제 (새로고침 시 방지)
+                    sessionStorage.removeItem('presscraft-edit-event');
+                    // URL 파라미터를 지우려면 router.replace('/generator')를 할 수도 있음
+                    router.replace('/generator');
+                } catch (e) {
+                    console.error("Failed to parse edit event", e);
+                }
+            }
+        }
+    }, [searchParams, router]);
 
     // ——— 헬퍼 ———
     const setField = <K extends keyof FormState>(key: K, val: FormState[K]) =>
@@ -212,7 +266,7 @@ export default function GeneratorPage() {
             return;
         }
         setIsProcessing(true);
-        setProcessingMsg("Gemini AI가 보도자료를 작성 중입니다... (30초~1분)");
+        setProcessingMsg("보도자료를 만드는 중입니다... (30초~1분)");
 
         const combinedRef = [
             form.referenceFileContent,
@@ -256,21 +310,43 @@ export default function GeneratorPage() {
 
     // ——— 캘린더 저장 ———
     const handleSaveToCalendar = async () => {
-        const event = {
-            id: Date.now(),
-            title: selectedTitle || form.prSubject,
-            date: (publishDate || new Date()).toISOString(),
-            status: "예정됨",
-            type: "보도자료",
-            content: editedContent,
-            image: form.imageName,
-            imageContent: form.imageContent,
-        };
         const STORAGE_KEY = "presscraft-events";
         const existing = await localforage.getItem<any[]>(STORAGE_KEY) || [];
-        existing.push(event);
-        await localforage.setItem(STORAGE_KEY, existing);
-        alert(`${format(publishDate || new Date(), "yyyy년 MM월 dd일", { locale: ko })} 일정으로 캘린더에 저장되었습니다.`);
+
+        if (editEventId) {
+            // 수정 모드
+            const updated = existing.map(e => {
+                if (e.id === editEventId) {
+                    return {
+                        ...e,
+                        title: selectedTitle || form.prSubject,
+                        date: (publishDate || new Date()).toISOString(),
+                        content: editedContent,
+                        image: form.imageName || e.image,
+                        imageContent: form.imageContent || e.imageContent,
+                    };
+                }
+                return e;
+            });
+            await localforage.setItem(STORAGE_KEY, updated);
+            alert(`${format(publishDate || new Date(), "yyyy년 MM월 dd일", { locale: ko })} 일정의 보도자료 내용이 성공적으로 수정되었습니다.`);
+        } else {
+            // 신규 저장 모드
+            const event = {
+                id: Date.now(),
+                title: selectedTitle || form.prSubject,
+                date: (publishDate || new Date()).toISOString(),
+                status: "예정됨",
+                type: "보도자료",
+                content: editedContent,
+                image: form.imageName,
+                imageContent: form.imageContent,
+            };
+            existing.push(event);
+            await localforage.setItem(STORAGE_KEY, existing);
+            alert(`${format(publishDate || new Date(), "yyyy년 MM월 dd일", { locale: ko })} 일정으로 캘린더에 새롭게 저장되었습니다.`);
+        }
+
         router.push("/calendar");
     };
 
@@ -283,7 +359,7 @@ export default function GeneratorPage() {
             {/* 페이지 헤더 */}
             <div className="text-center space-y-2">
                 <h2 className="text-3xl font-bold tracking-tight">보도자료 자동 생성</h2>
-                <p className="text-muted-foreground">정보를 입력하면 Gemini AI가 전문 보도자료를 작성합니다.</p>
+                <p className="text-muted-foreground">정보를 입력하면 AI가 전문 보도자료를 작성합니다.</p>
             </div>
 
             {/* Stepper */}
@@ -568,14 +644,6 @@ export default function GeneratorPage() {
                                         </button>
                                     ))}
                                 </div>
-                                <div className="pt-1">
-                                    <Label className="text-xs text-muted-foreground">직접 입력/수정</Label>
-                                    <Input
-                                        className="mt-1 font-medium"
-                                        value={selectedTitle}
-                                        onChange={e => setSelectedTitle(e.target.value)}
-                                    />
-                                </div>
                             </CardContent>
                         </Card>
 
@@ -626,19 +694,50 @@ export default function GeneratorPage() {
                         )}
 
                         {/* 본문 편집 */}
-                        <Card>
+                        <Card className="overflow-hidden">
                             <CardHeader className="bg-slate-50 border-b">
                                 <div className="flex items-center justify-between">
-                                    <CardTitle className="text-base flex items-center gap-2"><AlignLeft className="w-4 h-4" /> 본문 편집</CardTitle>
-                                    <span className="text-xs text-muted-foreground">{editedContent.length.toLocaleString()}자</span>
+                                    <CardTitle className="text-base flex items-center gap-2"><FileText className="w-4 h-4" /> 최종 보도자료 확인 및 본문 편집</CardTitle>
+                                    <span className="text-xs text-muted-foreground">{(selectedTitle.length + selectedSummaries.join("").length + editedContent.length).toLocaleString()}자</span>
                                 </div>
-                                <CardDescription>내용을 자유롭게 편집하세요. Ctrl+A로 전체 선택 가능합니다.</CardDescription>
+                                <CardDescription>선택한 타이틀과 요약문이 상단에 반영됩니다. 여기서 자유롭게 최종 수정을 진행하세요.</CardDescription>
                             </CardHeader>
-                            <CardContent className="p-0">
-                                <Textarea
-                                    className="min-h-[600px] font-serif text-[15px] leading-loose p-8 bg-white rounded-none border-0 resize-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                            <CardContent className="p-0 flex flex-col bg-white">
+                                <div className="p-8 pb-4 font-serif space-y-5 border-b border-dashed border-gray-200 bg-gray-50/30">
+                                    <Input
+                                        className="w-full text-2xl font-bold text-gray-900 border-0 border-b-2 border-transparent hover:border-gray-200 focus:border-blue-500 focus:ring-0 px-0 rounded-none transition-colors bg-transparent h-auto py-2"
+                                        value={selectedTitle}
+                                        onChange={e => setSelectedTitle(e.target.value)}
+                                        placeholder="보도자료 제목"
+                                    />
+                                    {selectedSummaries.length > 0 && (
+                                        <div className="space-y-3">
+                                            {selectedSummaries.map((s, i) => (
+                                                <div key={i} className="flex gap-3 items-start">
+                                                    <span className="font-bold text-blue-600 mt-2">✓</span>
+                                                    <Textarea
+                                                        className="w-full font-bold text-gray-700 border-0 border-b border-transparent hover:border-gray-200 focus:border-blue-500 focus:ring-0 px-0 rounded-none transition-colors resize-none overflow-hidden bg-transparent min-h-[40px]"
+                                                        value={s}
+                                                        onChange={e => {
+                                                            const newS = [...selectedSummaries];
+                                                            newS[i] = e.target.value;
+                                                            setSelectedSummaries(newS);
+                                                        }}
+                                                        onInput={(e) => {
+                                                            const target = e.target as HTMLTextAreaElement;
+                                                            target.style.height = 'auto';
+                                                            target.style.height = target.scrollHeight + 'px';
+                                                        }}
+                                                        rows={1}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <RichTextEditor
                                     value={editedContent}
-                                    onChange={e => setEditedContent(e.target.value)}
+                                    onChange={setEditedContent}
                                 />
                             </CardContent>
                         </Card>
@@ -686,7 +785,7 @@ export default function GeneratorPage() {
                                         </Popover>
 
                                         <Button size="lg" className="bg-green-600 hover:bg-green-700 text-white" onClick={handleSaveToCalendar}>
-                                            <Check className="w-4 h-4 mr-2" /> 보도자료 예약하기
+                                            <Check className="w-4 h-4 mr-2" /> 보도자료 {editEventId ? '수정완료 (캘린더 연동)' : '예약하기'}
                                         </Button>
                                     </div>
                                 </div>

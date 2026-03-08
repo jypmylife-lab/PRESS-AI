@@ -1,10 +1,12 @@
 "use server";
 
-import Groq from "groq-sdk";
+import OpenAI from "openai";
+import { fetchAction } from "convex/nextjs";
+import { api } from "../../../convex/_generated/api";
 import { DEFAULT_BRAND_DESCRIPTION } from "../generator/constants";
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const MODEL = "llama-3.3-70b-versatile"; // 무료, GPT-4급 품질
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const MODEL = "gpt-4o"; // gpt5.4 대신 현재 최고 성능인 gpt-4o 적용
 
 export interface PressReleaseInput {
     prSubject: string;
@@ -34,8 +36,8 @@ export async function generatePressReleaseAction(input: PressReleaseInput): Prom
     data?: GeneratedPressRelease;
     message?: string;
 }> {
-    if (!process.env.GROQ_API_KEY) {
-        return { success: false, message: "GROQ_API_KEY가 설정되지 않았습니다." };
+    if (!process.env.OPENAI_API_KEY) {
+        return { success: false, message: "OPENAI_API_KEY가 설정되지 않았습니다." };
     }
 
     const typeLabel =
@@ -55,6 +57,30 @@ export async function generatePressReleaseAction(input: PressReleaseInput): Prom
 반드시 아래 JSON 형식으로만 응답하세요. 다른 텍스트는 절대 포함하지 마세요.
 {"titles":["제목1","제목2","제목3","제목4","제목5"],"summaries":["요약1","요약2","요약3","요약4","요약5"],"content":"본문 전체(줄바꿈은 \\n)"}`;
 
+    let similarPrContext = "";
+    try {
+        console.log(`[generatePR] 유사 보도자료 검색 임베딩 생성 시작...`);
+        const searchString = `[주제] ${input.prSubject}\n[유형] ${typeLabel}\n[브랜드] ${input.brandName}`;
+        const searchEmbeddingRes = await openai.embeddings.create({
+            model: "text-embedding-3-small",
+            input: searchString,
+        });
+        const searchEmbedding = searchEmbeddingRes.data[0].embedding;
+
+        console.log(`[generatePR] Convex Vector Search 시작 (RAG)...`);
+        const similarDocs = await fetchAction(api.pressReleases.searchSimilar, {
+            embedding: searchEmbedding
+        });
+
+        if (similarDocs && similarDocs.length > 0) {
+            console.log(`[generatePR] 🔍 유사 보도자료 ${similarDocs.length}개 발견!`);
+            similarPrContext = `\n[톤앤매너 참고용 과거 보도자료 - 작성 시 철저히 모방할 것]\n` +
+                similarDocs.map((doc: any, i: number) => `### 참고자료 ${i + 1}\n[주제] ${doc.subject || "없음"}\n[본문]\n${doc.content}`).join("\n\n");
+        }
+    } catch (err: any) {
+        console.error(`[generatePR] ⚠️ Vector Search 에러 (기본 프롬프트로 생성 진행):`, err.message);
+    }
+
     const userPrompt = `아래 정보로 전문 보도자료를 작성해주세요.
 
 [보도자료 주제] ${input.prSubject}
@@ -64,6 +90,7 @@ ${input.productName ? `[제품/캠페인명] ${input.productName}` : ""}
 
 [참고 자료]
 ${input.referenceText || "없음"}
+${similarPrContext}
 
 [LLM SEO 노출 전략 (참고용 검색 질문 및 답변)]
 다음 질문이 검색될 경우 기사 일부가 답변으로 활용될 수 있도록 문장을 구성하세요.
@@ -86,6 +113,7 @@ ${input.brandDescription}
 [작성 원칙 - 다음 사항을 100% 엄수할 것]
 - 분량: 1200~1500자
 - [필수] 간결하고 자연스러운 한국어 기사체(평서문)로 작성하되, 문단 내에서 문장 어미와 구조를 다양하게 사용하여 기계적인 느낌을 완전히 없앨 것
+- [필수] 참고용 과거 보도자료가 주어졌다면, 그 보도자료의 문장 구조, 단어 선택, 톤앤매너를 완벽하게 모방하여 작성할 것
 - [금지] 어색한 번역투, 영문 직역 투, 지나치게 딱딱한 한자어 사용을 절대 금지함 (예: '~에 있어서', '~함에 따라', '제고하다', '수반하다' 등 배제)
 - [금지] 동일한 단어, 동일한 의미의 문장, 유사한 문장 구조가 한 기사 내에서 2회 이상 반복되는 것을 엄격히 금지함
 - [필수] 각 문단은 이전 문단과 겹치지 않는 완전히 새로운 정보를 담아야 함
@@ -98,8 +126,8 @@ ${input.brandDescription}
 - 할루시네이션(임의 사실 생성) 절대 금지`;
 
     try {
-        console.log(`[generatePR] Groq ${MODEL} 호출`);
-        const response = await groq.chat.completions.create({
+        console.log(`[generatePR] OpenAI ${MODEL} 호출`);
+        const response = await openai.chat.completions.create({
             model: MODEL,
             messages: [
                 { role: "system", content: systemPrompt },
@@ -110,7 +138,7 @@ ${input.brandDescription}
             max_tokens: 4096,
         });
 
-        const rawText = response.choices[0].message.content || "";
+        const rawText = response.choices[0].message?.content || "";
         const parsed: GeneratedPressRelease = JSON.parse(rawText);
         console.log(`[generatePR] ✅ 성공`);
         return { success: true, data: parsed };
