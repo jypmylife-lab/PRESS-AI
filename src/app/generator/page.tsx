@@ -81,14 +81,25 @@ const INITIAL_FORM: FormState = {
 // ————————————————————
 // Word 다운로드 (라이브러리 없이 HTML → .doc)
 // ————————————————————
-function downloadAsWord(params: { content: string; title: string; summaries: string[]; imageContent?: string }) {
-    const { content, title, summaries, imageContent } = params;
+function downloadAsWord(params: { content: string; title: string; summaries: string[]; imageContent?: string; brandName?: string }) {
+    const { content, title, summaries, imageContent, brandName } = params;
+
+    // 요약문 스타일 변경 ('-' 불릿, 검정 텍스트)
     const summariesHtml = summaries.length > 0
-        ? `<div style="margin-bottom: 20px;">${summaries.map(s => `<p style="font-weight: bold; color: #2563eb;">✓ ${s}</p>`).join('')}</div>`
+        ? `<div style="margin-bottom: 20px;">${summaries.map(s => `<p style="line-height: 1.6; margin: 0.2rem 0;">- ${s}</p>`).join('')}</div>`
         : "";
+
+    // 이미지 크기 제한 (max-width: 400px)
     const imageHtml = imageContent
-        ? `<div style="text-align: center; margin-bottom: 20px;"><img src="${imageContent}" style="max-width: 100%; height: auto;" /></div>`
+        ? `<div style="text-align: center; margin-bottom: 20px;"><img src="${imageContent}" style="max-width: 400px; height: auto;" /></div>`
         : "";
+
+    // 본문 내 브랜드 소개 텍스트 볼드 처리 (만약 있다면)
+    let processedContent = content;
+    const brandIntroTitle = `${brandName || "데스커(DESKER)"} 브랜드 소개`;
+    if (processedContent.includes(brandIntroTitle)) {
+        processedContent = processedContent.replace(brandIntroTitle, `<strong>${brandIntroTitle}</strong><br/>`);
+    }
 
     const htmlContent = `
     <html xmlns:o='urn:schemas-microsoft-com:office:office'
@@ -101,10 +112,10 @@ function downloadAsWord(params: { content: string; title: string; summaries: str
     </style>
     </head>
     <body>
-      <h1 style="font-size:16pt;font-weight:bold;margin-bottom:24px;">${title}</h1>
+      <h1 style="font-size:16pt;font-weight:bold;margin-bottom:24px;color:#2563eb;">${title}</h1>
       ${summariesHtml}
       ${imageHtml}
-      ${content.includes('<p>') ? content : content.split("\n").map(line => `<p>${line || "&nbsp;"}</p>`).join("")}
+      ${processedContent.includes('<p>') ? processedContent : processedContent.split("\n").map(line => `<p>${line || "&nbsp;"}</p>`).join("")}
     </body></html>`;
     const blob = new Blob(["\uFEFF" + htmlContent], { type: "application/msword" });
     const url = URL.createObjectURL(blob);
@@ -780,7 +791,8 @@ function GeneratorContent() {
                                                 content: editedContent,
                                                 title: selectedTitle || form.prSubject,
                                                 summaries: selectedSummaries,
-                                                imageContent: form.imageContent
+                                                imageContent: form.imageContent,
+                                                brandName: form.brandName
                                             })}
                                         >
                                             <Download className="w-4 h-4 mr-2" /> Word 추출
