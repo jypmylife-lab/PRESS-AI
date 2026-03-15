@@ -14,14 +14,15 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Line } from 'recharts';
 import Tesseract from 'tesseract.js';
-import localforage from "localforage";
 import { extractTextFromFile as globalExtractText } from "@/lib/file-parser";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { Id } from "../../../convex/_generated/dataModel";
 
 // Types matching CalendarPage
 interface Event {
-    id: number;
+    _id?: Id<"calendarEvents">;
+    id: number | Id<"calendarEvents">;
     title: string;
     date: Date;
     status: string;
@@ -35,7 +36,7 @@ interface Event {
 }
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => i);
-const STORAGE_KEY = "presscraft-events";
+// STORAGE_KEY 
 
 export default function ReportsPage() {
     const router = useRouter();
@@ -53,42 +54,29 @@ export default function ReportsPage() {
 
     // Convex data
     const trainedPrs = useQuery(api.pressReleases.getList);
+    const rawEvents = useQuery(api.calendarEvents.getAll) || [];
+    const createEvent = useMutation(api.calendarEvents.create);
+    const removeEvent = useMutation(api.calendarEvents.remove);
+    const updateEvent = useMutation(api.calendarEvents.update);
+    const updatePerf = useMutation(api.calendarEvents.updatePerformance);
+
+    useEffect(() => {
+        if (rawEvents.length > 0) {
+            const parsed = rawEvents.map(e => ({
+                ...e,
+                id: e._id,
+                date: new Date(e.date)
+            }));
+            setEvents(parsed);
+        } else {
+            setEvents([]);
+        }
+    }, [rawEvents, currentYear]);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Initialize data from localforage with migration fallback
-    useEffect(() => {
-        const loadData = async () => {
-            try {
-                let stored = await localforage.getItem<any[]>(STORAGE_KEY);
-
-                // Migration logic: check localStorage if localforage is empty
-                if (!stored) {
-                    const legacy = localStorage.getItem(STORAGE_KEY);
-                    if (legacy) {
-                        console.log("Migrating data from localStorage to localforage (Reports)...");
-                        stored = JSON.parse(legacy);
-                        await localforage.setItem(STORAGE_KEY, stored);
-                    }
-                }
-
-                if (stored) {
-                    const parsed = stored.map((e: any) => ({
-                        ...e,
-                        date: new Date(e.date)
-                    }));
-                    setEvents(parsed);
-                }
-            } catch (e) {
-                console.error("Failed to load events", e);
-            }
-        };
-
-        loadData();
-        // ✅ 자동 호출 제거 - 뉴스클리핑과 동시 실행 시 Rate Limit 충돌 방지
-        // 사용자가 '네이버 데이터 불러오기' 버튼을 클릭할 때만 호출됨
-    }, [currentYear]);
+    // Initialize data from localforage -> Removed since we use Convex now
 
     const fetchKeywordMonthlyStats = async () => {
         setIsLoadingStats(true);
@@ -336,16 +324,30 @@ export default function ReportsPage() {
             }
 
             if (newEvents.length > 0) {
+                // UI optimistic update
                 const updatedEvents = [...events, ...newEvents].sort((a, b) => b.date.getTime() - a.date.getTime());
                 setEvents(updatedEvents);
 
-                // Persist
-                const toSave = updatedEvents.map(ev => ({
-                    ...ev,
-                    date: ev.date.toISOString()
-                }));
-                await localforage.setItem(STORAGE_KEY, toSave);
-                alert(`${newEvents.length}개의 파일이 성공적으로 업로드되었습니다.`);
+                // Persist via Convex
+                for (const ev of newEvents) {
+                    // 크기가 1MB 넘으면 오류날 수 있는 것을 Catch
+                    try {
+                        await createEvent({
+                            title: ev.title,
+                            date: ev.date.toISOString(),
+                            status: ev.status,
+                            type: ev.type,
+                            performanceFile: ev.performanceFile,
+                            performanceFileName: ev.performanceFileName,
+                            articleCount: ev.articleCount
+                        });
+                    } catch (e) {
+                        console.error("Convex upload limit exceeded for file:", ev.performanceFileName);
+                        alert(`${ev.performanceFileName} 파일 업로드 실패: 파일 용량이 1MB를 초과하여 DB에 저장할 수 없습니다.`);
+                    }
+                }
+
+                alert(`${newEvents.length}개의 파일 처리가 시도되었습니다.`);
             } else {
                 alert("처리할 수 있는 파일이 없습니다. (지원하지 않는 형식이거나 용량이 너무 큼)");
             }
@@ -358,62 +360,63 @@ export default function ReportsPage() {
         }
     };
 
-    const handleDeleteEvent = async (eventId: number) => {
+    const handleDeleteEvent = async (eventId: Id<"calendarEvents"> | number) => {
         if (!confirm("정말로 이 성과 리포트를 삭제하시겠습니까? (복구할 수 없습니다)")) return;
 
-        const updatedEvents = events.filter(ev => ev.id !== eventId);
-        setEvents(updatedEvents);
-
-        // Persist to localforage
-        const toSave = updatedEvents.map(ev => ({
-            ...ev,
-            date: ev.date.toISOString()
-        }));
-        await localforage.setItem(STORAGE_KEY, toSave);
+        try {
+            if (typeof eventId === "string") {
+                await removeEvent({ id: eventId as Id<"calendarEvents"> });
+            } else {
+                setEvents(events.filter(ev => ev.id !== eventId));
+            }
+        } catch (e) {
+            console.error(e);
+            alert("삭제 실패");
+        }
     };
 
-    const handleDeletePerformanceFile = async (eventId: number) => {
+    const handleDeletePerformanceFile = async (eventId: Id<"calendarEvents"> | number) => {
         if (!confirm("성과 파일을 삭제하시겠습니까? 관련 기사 수도 초기화됩니다.")) return;
 
-        const updatedEvents = events.map(ev =>
-            ev.id === eventId
-                ? { ...ev, performanceFile: undefined, performanceFileName: undefined, articleCount: 0 }
-                : ev
-        );
-        setEvents(updatedEvents);
-
-        // Persist to localforage
-        const toSave = updatedEvents.map(ev => ({
-            ...ev,
-            date: ev.date.toISOString()
-        }));
-        await localforage.setItem(STORAGE_KEY, toSave);
+        try {
+            if (typeof eventId === "string") {
+                // DB Update (Set to undefined implicitly removes it if the schema allows, or use empty strings)
+                await updatePerf({
+                    id: eventId as Id<"calendarEvents">,
+                    articleCount: 0,
+                    performanceFile: undefined,
+                    performanceFileName: undefined
+                });
+            } else {
+                setEvents(events.map(ev => ev.id === eventId ? { ...ev, performanceFile: undefined, performanceFileName: undefined, articleCount: 0 } : ev));
+            }
+        } catch (e) {
+            console.error(e);
+            alert("삭제 실패");
+        }
     };
 
-    const handleFileUpload = async (eventId: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = async (eventId: Id<"calendarEvents"> | number, e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        setIsAnalyzing(eventId);
+        setIsAnalyzing(typeof eventId === 'number' ? eventId : parseInt(eventId.substring(0, 8), 16));
 
         try {
             const { base64, text } = await processFileLocal(file);
-
             const count = countArticlesFromText(text);
 
-            const updatedEvents = events.map(ev =>
-                ev.id === eventId
-                    ? { ...ev, performanceFile: base64, performanceFileName: file.name, articleCount: count }
-                    : ev
-            );
-            setEvents(updatedEvents);
-
-            // Persist to localforage
-            const toSave = updatedEvents.map(ev => ({
-                ...ev,
-                date: ev.date.toISOString()
-            }));
-            await localforage.setItem(STORAGE_KEY, toSave);
+            if (typeof eventId === "string") {
+                await updatePerf({
+                    id: eventId as Id<"calendarEvents">,
+                    articleCount: count,
+                    performanceFile: base64,
+                    performanceFileName: file.name
+                });
+            } else {
+                // local fallback
+                setEvents(events.map(ev => ev.id === eventId ? { ...ev, performanceFile: base64, performanceFileName: file.name, articleCount: count } : ev));
+            }
         } catch (error) {
             console.error("Analysis failed", error);
             alert("파일 분석 중 오류가 발생했습니다. 용량이 너무 크거나 지원하지 않는 형식일 수 있습니다.");
@@ -422,23 +425,25 @@ export default function ReportsPage() {
         }
     };
 
-    const handleUpdateArticleCount = async (eventId: number, count: string | number) => {
+    const handleUpdateArticleCount = async (eventId: Id<"calendarEvents"> | number, count: string | number) => {
         const numCount = typeof count === "string" ? parseInt(count) || 0 : count;
-        const updatedEvents = events.map(ev =>
-            ev.id === eventId ? { ...ev, articleCount: numCount } : ev
-        );
-        setEvents(updatedEvents);
 
-        // Persist to localforage
-        const toSave = updatedEvents.map(ev => ({
-            ...ev,
-            date: ev.date.toISOString()
-        }));
-        await localforage.setItem(STORAGE_KEY, toSave);
+        try {
+            if (typeof eventId === "string") {
+                await updatePerf({
+                    id: eventId as Id<"calendarEvents">,
+                    articleCount: numCount
+                });
+            } else {
+                setEvents(events.map(ev => ev.id === eventId ? { ...ev, articleCount: numCount } : ev));
+            }
+        } catch (e) {
+            console.error("count update failed", e);
+        }
     };
 
-    const handleFetchArticleCount = async (eventId: number, title: string) => {
-        setIsFetchingCount(eventId);
+    const handleFetchArticleCount = async (eventId: Id<"calendarEvents"> | number, title: string) => {
+        setIsFetchingCount(typeof eventId === 'number' ? eventId : parseInt(eventId.substring(0, 8), 16));
         try {
             // Search Naver API using the press release title
             const res = await fetch(`/api/news-search?query=${encodeURIComponent(title)}&sort=sim&display=100`);
@@ -499,7 +504,7 @@ export default function ReportsPage() {
                         disabled={isLoadingStats}
                     >
                         {isLoadingStats
-                            ? <><Loader2 className="w-4 h-4 animate-spin" /> 검색 중...           </>
+                            ? <><Loader2 className="w-4 h-4 animate-spin" /> 검색 중...&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</>
                             : <><Search className="w-4 h-4" /> 네이버 뉴스 불러오기</>
                         }
                     </Button>

@@ -18,11 +18,14 @@ import { saveAs } from "file-saver";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { isPast, isToday } from "date-fns";
-import localforage from "localforage";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import { Id } from "../../../convex/_generated/dataModel";
 
 // Types
 interface Event {
-    id: number;
+    _id?: Id<"calendarEvents">;
+    id: number | Id<"calendarEvents">; // 호환성용
     title: string;
     date: Date;
     status: string;
@@ -30,22 +33,14 @@ interface Event {
     content?: string;
     image?: string;
     imageContent?: string;
+    performanceFile?: string;
+    performanceFileName?: string;
+    articleCount?: number;
 }
 
 // Mock Events
-const MOCK_EVENTS: Event[] = [
-    {
-        id: 1,
-        title: "제품 출시 v2.0",
-        date: new Date(2025, 4, 15),
-        status: "예정됨",
-        type: "보도자료",
-        content: "[보도자료]\n\n데스커, 모션데스크 알파 출시\n\n퍼시스그룹의 데스커가 새로운 모션데스크 알파를 출시했습니다...",
-        image: "product_v2.jpg"
-    }
-];
-
-const STORAGE_KEY = "presscraft-events";
+// const MOCK_EVENTS: Event[] = [...]; 
+// STORAGE_KEY 
 
 function CalendarContent() {
     const router = useRouter();
@@ -61,6 +56,22 @@ function CalendarContent() {
     const [editDate, setEditDate] = useState<Date | undefined>(undefined);
     const [viewMode, setViewMode] = useState<'day' | 'month'>('day');
     const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+
+    // Convex
+    const rawEvents = useQuery(api.calendarEvents.getAll);
+    const createEvent = useMutation(api.calendarEvents.create);
+    const removeEvent = useMutation(api.calendarEvents.remove);
+
+    useEffect(() => {
+        if (rawEvents) {
+            const parsed = rawEvents.map(e => ({
+                ...e,
+                id: e._id,
+                date: new Date(e.date)
+            }));
+            setEvents(parsed);
+        }
+    }, [rawEvents]);
 
     // Update currentMonth when date changes (e.g. from header buttons)
     useEffect(() => {
@@ -82,40 +93,6 @@ function CalendarContent() {
         }
     }, [searchParams]);
 
-    // Initialize data from localforage with migration fallback
-    useEffect(() => {
-        const loadData = async () => {
-            try {
-                let stored = await localforage.getItem<any[]>(STORAGE_KEY);
-
-                // Migration logic: check localStorage if localforage is empty
-                if (!stored) {
-                    const legacy = localStorage.getItem(STORAGE_KEY);
-                    if (legacy) {
-                        console.log("Migrating data from localStorage to localforage...");
-                        stored = JSON.parse(legacy);
-                        await localforage.setItem(STORAGE_KEY, stored);
-                    }
-                }
-
-                if (stored) {
-                    const parsed = stored.map((e: any) => ({
-                        ...e,
-                        date: new Date(e.date)
-                    }));
-                    setEvents([...MOCK_EVENTS, ...parsed]);
-                } else {
-                    setEvents(MOCK_EVENTS);
-                }
-            } catch (e) {
-                console.error("Failed to load events", e);
-                setEvents(MOCK_EVENTS);
-            }
-        };
-
-        loadData();
-    }, []);
-
     const selectedDateEvents = events.filter(e => date && isSameDay(e.date, date));
     const selectedMonthEvents = events.filter(e => date && isSameMonth(e.date, date)).sort((a, b) => a.date.getTime() - b.date.getTime());
 
@@ -132,22 +109,20 @@ function CalendarContent() {
 
     const handleCreateEvent = async () => {
         if (!date || !newEventTitle) return;
-        const newEvent = {
-            id: Date.now(),
-            title: newEventTitle,
-            date: date,
-            status: "예정됨",
-            type: "보도자료"
-        };
 
-        const updatedEvents = [...events, newEvent];
-        setEvents(updatedEvents);
-        setNewEventTitle("");
-        setNewEventOpen(false);
-
-        const userEvents = updatedEvents.filter(e => e.id !== 1);
-        const toSave = userEvents.map(e => ({ ...e, date: e.date.toISOString() }));
-        await localforage.setItem(STORAGE_KEY, toSave);
+        try {
+            await createEvent({
+                title: newEventTitle,
+                date: date.toISOString(),
+                status: "예정됨",
+                type: "보도자료"
+            });
+            setNewEventTitle("");
+            setNewEventOpen(false);
+        } catch (error) {
+            console.error("Failed to create event:", error);
+            alert("일정 생성에 실패했습니다.");
+        }
     };
 
     const handleDownloadImage = (filename: string, content: string) => {
@@ -182,17 +157,24 @@ function CalendarContent() {
         router.push(`/generator?editEventId=${event.id}&hasContent=${hasContent ? 'true' : 'false'}`);
     };
 
-    const handleDeleteEvent = async (id: number) => {
+    const handleDeleteEvent = async (id: number | Id<"calendarEvents">) => {
         if (!window.confirm("정말로 이 일정을 삭제하시겠습니까?")) return;
 
-        const updatedEvents = events.filter(e => e.id !== id);
-        setEvents(updatedEvents);
-
-        const userEvents = updatedEvents.filter(e => e.id !== 1);
-        const toSave = userEvents.map(e => ({ ...e, date: e.date.toISOString() }));
-        await localforage.setItem(STORAGE_KEY, toSave);
-
-        setSelectedDetailEvent(null);
+        try {
+            // Convert to Convex Id
+            if (typeof id === "string") {
+                await removeEvent({ id: id as Id<"calendarEvents"> });
+                setSelectedDetailEvent(null);
+            } else {
+                // If it happens to be numeric mock data (which shouldn't exist anymore), just filtering UI
+                const updatedEvents = events.filter(e => e.id !== id);
+                setEvents(updatedEvents);
+                setSelectedDetailEvent(null);
+            }
+        } catch (error) {
+            console.error("Failed to delete event:", error);
+            alert("일정 삭제에 실패했습니다.");
+        }
     };
 
     const handleExportToWord = async (event: Event) => {

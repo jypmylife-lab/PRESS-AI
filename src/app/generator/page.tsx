@@ -23,8 +23,10 @@ import {
     type GeneratedPressRelease
 } from "../actions/generate-press-release";
 import { DEFAULT_BRAND_DESCRIPTION } from "./constants";
-import localforage from "localforage";
 import RichTextEditor from "@/components/RichTextEditor";
+import { useMutation } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import { Id } from "../../../convex/_generated/dataModel";
 
 // ————————————————————
 // 타입 정의
@@ -151,7 +153,11 @@ function GeneratorContent() {
     // UI 상태
     const [showBrandEditor, setShowBrandEditor] = useState(false);
     const [analysisStatus, setAnalysisStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
-    const [editEventId, setEditEventId] = useState<number | null>(null);
+    const [editEventId, setEditEventId] = useState<Id<"calendarEvents"> | null>(null);
+
+    // Convex Mutations
+    const createEvent = useMutation(api.calendarEvents.create);
+    const updateEvent = useMutation(api.calendarEvents.update);
 
     // 캘린더에서 넘어왔을 때 초기 데이터 복원
     useEffect(() => {
@@ -159,7 +165,7 @@ function GeneratorContent() {
         const editEventIdParam = searchParams.get('editEventId');
 
         if (editEventIdParam) {
-            setEditEventId(Number(editEventIdParam));
+            setEditEventId(editEventIdParam as Id<"calendarEvents">);
             const stored = sessionStorage.getItem('presscraft-edit-event');
             if (stored) {
                 try {
@@ -332,44 +338,38 @@ function GeneratorContent() {
 
     // ——— 캘린더 저장 ———
     const handleSaveToCalendar = async () => {
-        const STORAGE_KEY = "presscraft-events";
-        const existing = await localforage.getItem<any[]>(STORAGE_KEY) || [];
+        try {
+            if (editEventId) {
+                // 수정 모드
+                await updateEvent({
+                    id: editEventId,
+                    title: selectedTitle || form.prSubject,
+                    date: (publishDate || new Date()).toISOString(),
+                    content: editedContent,
+                    image: form.imageName,
+                    imageContent: form.imageContent,
+                });
+                alert(`${format(publishDate || new Date(), "yyyy년 MM월 dd일", { locale: ko })} 일정의 보도자료 내용이 성공적으로 수정되었습니다.`);
+            } else {
+                // 신규 저장 모드
+                await createEvent({
+                    title: selectedTitle || form.prSubject,
+                    date: (publishDate || new Date()).toISOString(),
+                    status: "예정됨",
+                    type: "보도자료",
+                    content: editedContent,
+                    image: form.imageName,
+                    imageContent: form.imageContent,
+                });
+                alert(`${format(publishDate || new Date(), "yyyy년 MM월 dd일", { locale: ko })} 일정으로 캘린더에 새롭게 저장되었습니다.`);
+            }
 
-        if (editEventId) {
-            // 수정 모드
-            const updated = existing.map(e => {
-                if (e.id === editEventId) {
-                    return {
-                        ...e,
-                        title: selectedTitle || form.prSubject,
-                        date: (publishDate || new Date()).toISOString(),
-                        content: editedContent,
-                        image: form.imageName || e.image,
-                        imageContent: form.imageContent || e.imageContent,
-                    };
-                }
-                return e;
-            });
-            await localforage.setItem(STORAGE_KEY, updated);
-            alert(`${format(publishDate || new Date(), "yyyy년 MM월 dd일", { locale: ko })} 일정의 보도자료 내용이 성공적으로 수정되었습니다.`);
-        } else {
-            // 신규 저장 모드
-            const event = {
-                id: Date.now(),
-                title: selectedTitle || form.prSubject,
-                date: (publishDate || new Date()).toISOString(),
-                status: "예정됨",
-                type: "보도자료",
-                content: editedContent,
-                image: form.imageName,
-                imageContent: form.imageContent,
-            };
-            existing.push(event);
-            await localforage.setItem(STORAGE_KEY, existing);
-            alert(`${format(publishDate || new Date(), "yyyy년 MM월 dd일", { locale: ko })} 일정으로 캘린더에 새롭게 저장되었습니다.`);
+            router.push("/calendar");
+        } catch (error) {
+            console.error("Failed to save to calendar", error);
+            // 1MB 제한 등의 에러를 잡기 위해
+            alert("캘린더 저장에 실패했습니다. 이미지 용량이 너무 클 수 있습니다.");
         }
-
-        router.push("/calendar");
     };
 
     // ————————————————————

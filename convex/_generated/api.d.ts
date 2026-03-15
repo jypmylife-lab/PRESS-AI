@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as calendarEvents from "../calendarEvents.js";
 import type * as pressReleases from "../pressReleases.js";
 
 import type {
@@ -17,6 +18,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  calendarEvents: typeof calendarEvents;
   pressReleases: typeof pressReleases;
 }>;
 
