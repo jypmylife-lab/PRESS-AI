@@ -488,6 +488,15 @@ export default function ReportsPage() {
     const publishedEvents = events.filter(e => e.status === "배포 완료" || (e.status === "예정됨" && e.date < today))
         .sort((a, b) => b.date.getTime() - a.date.getTime());
 
+    const [isMounted, setIsMounted] = useState(false);
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
+    if (!isMounted) {
+        return <div className="flex items-center justify-center min-h-[500px]"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+    }
+
     return (
         <div className="space-y-6 pb-12">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">

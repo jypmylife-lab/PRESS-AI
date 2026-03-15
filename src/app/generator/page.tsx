@@ -159,6 +159,11 @@ function GeneratorContent() {
     const createEvent = useMutation(api.calendarEvents.create);
     const updateEvent = useMutation(api.calendarEvents.update);
 
+    const [isMounted, setIsMounted] = useState(false);
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
     // 캘린더에서 넘어왔을 때 초기 데이터 복원
     useEffect(() => {
         const hasContentParam = searchParams.get('hasContent');
@@ -371,6 +376,10 @@ function GeneratorContent() {
             alert("캘린더 저장에 실패했습니다. 이미지 용량이 너무 클 수 있습니다.");
         }
     };
+
+    if (!isMounted) {
+        return <div className="flex items-center justify-center min-h-[500px]"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+    }
 
     // ————————————————————
     // 렌더링

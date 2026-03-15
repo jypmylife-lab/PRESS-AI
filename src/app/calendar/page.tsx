@@ -21,7 +21,6 @@ import { isPast, isToday } from "date-fns";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
-import localforage from "localforage";
 
 // Types
 interface Event {
@@ -58,11 +57,16 @@ function CalendarContent() {
     const [viewMode, setViewMode] = useState<'day' | 'month'>('day');
     const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
     const [isMigrating, setIsMigrating] = useState(false);
+    const [isMounted, setIsMounted] = useState(false);
 
     // Convex
     const rawEvents = useQuery(api.calendarEvents.getAll);
     const createEvent = useMutation(api.calendarEvents.create);
     const removeEvent = useMutation(api.calendarEvents.remove);
+
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
     useEffect(() => {
         if (rawEvents) {
@@ -133,6 +137,7 @@ function CalendarContent() {
 
         try {
             setIsMigrating(true);
+            const localforage = (await import('localforage')).default;
             const localData: any[] | null = await localforage.getItem('calendarEvents');
 
             if (!localData || localData.length === 0) {
@@ -313,6 +318,10 @@ function CalendarContent() {
             setDate(addMonths(date, 1));
         }
     };
+
+    if (!isMounted) {
+        return <div className="flex items-center justify-center min-h-[500px]"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+    }
 
     return (
         <div className="space-y-6">
