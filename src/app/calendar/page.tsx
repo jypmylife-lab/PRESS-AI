@@ -6,7 +6,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Download, Upload, Edit, X, Trash2, CalendarIcon, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Download, Upload, Edit, X, Trash2, CalendarIcon, Loader2, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { format, isSameDay, isSameMonth, addDays, subDays, addMonths, subMonths } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -21,6 +21,7 @@ import { isPast, isToday } from "date-fns";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
+import localforage from "localforage";
 
 // Types
 interface Event {
@@ -56,6 +57,7 @@ function CalendarContent() {
     const [editDate, setEditDate] = useState<Date | undefined>(undefined);
     const [viewMode, setViewMode] = useState<'day' | 'month'>('day');
     const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+    const [isMigrating, setIsMigrating] = useState(false);
 
     // Convex
     const rawEvents = useQuery(api.calendarEvents.getAll);
@@ -122,6 +124,62 @@ function CalendarContent() {
         } catch (error) {
             console.error("Failed to create event:", error);
             alert("일정 생성에 실패했습니다.");
+        }
+    };
+
+    const handleMigrateLocalData = async () => {
+        const confirmMsg = "현재 기기에 예전 방식으로 저장되어 있던 전체 캘린더 데이터를 새 클라우드(Convex)로 불러옵니다.\n\n진행하시겠습니까? (이 작업에는 몇 초 정도 소요될 수 있으며, 이미 가져온 데이터는 중복될 수 있습니다.)";
+        if (!window.confirm(confirmMsg)) return;
+
+        try {
+            setIsMigrating(true);
+            const localData: any[] | null = await localforage.getItem('calendarEvents');
+
+            if (!localData || localData.length === 0) {
+                alert("가져올 기존 로컬 데이터가 없습니다.");
+                setIsMigrating(false);
+                return;
+            }
+
+            let successCount = 0;
+            let failCount = 0;
+
+            for (const oldEvent of localData) {
+                try {
+                    // MOCK_EVENTS 등에서 온 ID가 숫자인지 확인, 로컬 데이터는 무작위일 수 있음
+                    await createEvent({
+                        title: oldEvent.title,
+                        date: new Date(oldEvent.date).toISOString(),
+                        status: oldEvent.status || "예정됨",
+                        type: oldEvent.type || "보도자료",
+                        content: oldEvent.content,
+                        image: oldEvent.image,
+                        imageContent: oldEvent.imageContent, // 주의: Convex 무료 용량 제한(1MB) 초과 시 여기서 튕길 수 있음
+                        performanceFile: oldEvent.performanceFile,
+                        performanceFileName: oldEvent.performanceFileName,
+                        articleCount: oldEvent.articleCount
+                    });
+                    successCount++;
+                } catch (e) {
+                    console.error("Failed to migrate specific event", oldEvent.title, e);
+                    failCount++;
+                }
+            }
+
+            if (failCount > 0) {
+                alert(`가져오기 완료: ${successCount}건 성공 (첨부파일 용량 초과 등 1MB를 넘는 파일 때문에 ${failCount}건 실패)`);
+            } else {
+                alert(`성공적으로 총 ${successCount}건의 기존 데이터를 Convex 클라우드에 복구했습니다!`);
+
+                // 중복 방지를 위해 삭제할 수도 있으나, 안전을 위해 일단 이름만 변경
+                await localforage.setItem('calendarEvents_migrated_backup', localData);
+                await localforage.removeItem('calendarEvents');
+            }
+        } catch (error) {
+            console.error("Failed to run local migration", error);
+            alert("마이그레이션 도중 오류가 발생했습니다.");
+        } finally {
+            setIsMigrating(false);
         }
     };
 
@@ -263,6 +321,16 @@ function CalendarContent() {
                     <h2 className="text-3xl font-bold tracking-tight">배포 캘린더</h2>
                     <p className="text-muted-foreground">콘텐츠 배포 일정을 관리하세요.</p>
                 </div>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-primary border-primary hover:bg-primary/5"
+                    onClick={handleMigrateLocalData}
+                    disabled={isMigrating}
+                >
+                    {isMigrating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                    기존 로컬 데이터 불러오기 (마이그레이션)
+                </Button>
             </div>
 
             <div className="grid md:grid-cols-7 gap-6">
